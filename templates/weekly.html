@@ -104,80 +104,78 @@ function showScheduleDetail(s) {
     openModal(s.title, html);
 }
 
-// 유연한 시간 높이 계산
+// 주간 시간표 레이아웃 계산
 function positionBlocks() {
     const START_HOUR = 8;
     const END_HOUR = 18;
     const HOURS = END_HOUR - START_HOUR;
-    const BASE_PX = 45;       // 이벤트 있는 시간 기본 높이
-    const PER_EVENT_PX = 20;  // 이벤트 1건당 추가
-    const PASSING_PX = 22;    // 긴 블록 중간
-    const EMPTY_PX = 28;      // 빈 시간대 (시간 감각 유지)
-    const MIN_BLOCK_H = 40;   // 블록 최소 높이
+    const SLOT_PX = 44;       // 블록 1개당 필요한 최소 높이
+    const PASSING_PX = 16;    // 블록이 지나가기만 하는 시간 (수업 중간 등)
+    const EMPTY_PX = 24;      // 일정 없는 시간
+    const MIN_BLOCK_H = 40;   // 블록 렌더링 최소 높이
 
-    // 1) 요일별로 각 시간의 이벤트 수를 세고, 가장 바쁜 요일 기준으로 결정
-    const hourMaxEvents = new Array(HOURS).fill(0);
-    const hourPassing = new Array(HOURS).fill(false);
+    // 1) 각 시간대에 "시작하는 블록 수"를 요일별로 세서, 가장 많은 요일 기준
+    const hourMaxStarts = new Array(HOURS).fill(0);
+    const hourHasBlock = new Array(HOURS).fill(false); // 블록이 지나가는지
 
     document.querySelectorAll('.tt-day-col').forEach(col => {
-        const colEvents = new Array(HOURS).fill(0);
+        const starts = new Array(HOURS).fill(0);
+
         col.querySelectorAll('.tt-block').forEach(block => {
             const [sh] = block.dataset.start.split(':').map(Number);
-            const [eh, em] = block.dataset.end.split(':').map(Number);
+            const [eh] = block.dataset.end.split(':').map(Number);
 
+            // 이 블록이 시작하는 시간대에 +1
             const si = sh - START_HOUR;
-            if (si >= 0 && si < HOURS) colEvents[si]++;
+            if (si >= 0 && si < HOURS) starts[si]++;
 
-            const ei = (em > 0 ? eh : eh - 1) - START_HOUR;
-            if (ei >= 0 && ei < HOURS && ei !== si) colEvents[ei]++;
-
-            for (let h = sh + 1; h < eh; h++) {
+            // 블록이 지나가는 모든 시간대 표시
+            for (let h = sh; h <= eh && h < END_HOUR; h++) {
                 const idx = h - START_HOUR;
-                if (idx >= 0 && idx < HOURS) hourPassing[idx] = true;
+                if (idx >= 0 && idx < HOURS) hourHasBlock[idx] = true;
             }
         });
 
         for (let i = 0; i < HOURS; i++) {
-            hourMaxEvents[i] = Math.max(hourMaxEvents[i], colEvents[i]);
+            hourMaxStarts[i] = Math.max(hourMaxStarts[i], starts[i]);
         }
     });
 
-    // 2) 시간대별 높이 (가장 바쁜 요일 기준)
+    // 2) 시간대별 높이 결정
+    //    - 블록이 시작하는 시간: 시작 블록 수 × SLOT_PX
+    //    - 블록이 지나가기만 하는 시간 (수업 중간): PASSING_PX
+    //    - 완전히 빈 시간: EMPTY_PX
     const hourH = [];
     for (let i = 0; i < HOURS; i++) {
-        if (hourMaxEvents[i] > 0) {
-            hourH.push(BASE_PX + hourMaxEvents[i] * PER_EVENT_PX);
-        } else if (hourPassing[i]) {
+        if (hourMaxStarts[i] > 0) {
+            hourH.push(Math.max(hourMaxStarts[i] * SLOT_PX, SLOT_PX));
+        } else if (hourHasBlock[i]) {
             hourH.push(PASSING_PX);
         } else {
             hourH.push(EMPTY_PX);
         }
     }
 
+    // 누적 Y 좌표
     const hourY = [0];
-    for (let i = 0; i < HOURS; i++) {
-        hourY.push(hourY[i] + hourH[i]);
-    }
+    for (let i = 0; i < HOURS; i++) hourY.push(hourY[i] + hourH[i]);
     const totalH = hourY[HOURS];
 
-    // 3) 분 단위 → px 변환
-    function minToPx(hour, min) {
+    // 3) 시간 → px 변환
+    function timeToPx(hour, min) {
         const idx = Math.max(0, Math.min(hour - START_HOUR, HOURS - 1));
         return hourY[idx] + (min / 60) * hourH[idx];
     }
 
-    // 4) 그리드 라인
+    // 4) 그리드 라인 배치
     document.querySelectorAll('.tt-grid-line').forEach((line, i) => {
         line.style.top = hourY[i] + 'px';
     });
 
-    // 5) 시간 라벨
+    // 5) 시간 라벨 높이 (항상 표시)
     document.querySelectorAll('.tt-hour-label').forEach((label, i) => {
-        label.style.height = hourH[i] + 'px';
-        // 빈 시간대는 라벨 숨기기
-        if (hourH[i] <= EMPTY_PX) {
-            label.style.fontSize = '0';
-            label.style.borderTopColor = '#f0f0f0';
+        if (i < HOURS) {
+            label.style.height = hourH[i] + 'px';
         }
     });
 
@@ -189,8 +187,8 @@ function positionBlocks() {
         const [sh, sm] = block.dataset.start.split(':').map(Number);
         const [eh, em] = block.dataset.end.split(':').map(Number);
 
-        const top = minToPx(sh, sm);
-        const bottom = minToPx(eh, em);
+        const top = timeToPx(sh, sm);
+        const bottom = timeToPx(eh, em);
 
         block.style.top = top + 'px';
         block.style.height = Math.max(bottom - top - 2, MIN_BLOCK_H) + 'px';
