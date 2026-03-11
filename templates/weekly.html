@@ -109,46 +109,49 @@ function positionBlocks() {
     const START_HOUR = 8;
     const END_HOUR = 18;
     const HOURS = END_HOUR - START_HOUR;
-    const ACTIVE_PX = 55;     // 일정이 시작/끝나는 시간대 (바쁜 구간)
-    const PASSING_PX = 20;    // 일정이 지나가기만 하는 중간 시간대 (1~4교시 중간 등)
-    const EMPTY_PX = 14;      // 일정이 아예 없는 시간대
+    const BASE_PX = 45;       // 일정 전환 기본 높이
+    const PER_EVENT_PX = 30;  // 전환 1건당 추가 높이
+    const PASSING_PX = 18;    // 긴 블록 중간 (변화 없음)
+    const EMPTY_PX = 12;      // 빈 시간대
     const MIN_BLOCK_H = 42;   // 블록 최소 높이
 
     const blocks = document.querySelectorAll('.tt-block');
 
-    // 1) 시간대별 활동 수준 파악
-    //    - 'active': 일정이 시작하거나 끝나는 시간 (전환이 많음)
-    //    - 'passing': 일정이 지나가기만 함 (긴 블록 중간)
-    //    - 'empty': 아무 일정 없음
-    const hourType = new Array(HOURS).fill('empty');
+    // 1) 시간대별 전환 횟수 (시작/끝 이벤트 수) 집계
+    const hourEvents = new Array(HOURS).fill(0);     // 전환 횟수
+    const hourPassing = new Array(HOURS).fill(false); // 지나가는 일정 유무
 
     blocks.forEach(block => {
         const [sh, sm] = block.dataset.start.split(':').map(Number);
         const [eh, em] = block.dataset.end.split(':').map(Number);
 
-        // 시작 시간이 속한 hour → active
+        // 시작 시간 → 이벤트 +1
         const startIdx = sh - START_HOUR;
-        if (startIdx >= 0 && startIdx < HOURS) hourType[startIdx] = 'active';
+        if (startIdx >= 0 && startIdx < HOURS) hourEvents[startIdx]++;
 
-        // 종료 시간이 속한 hour → active
+        // 종료 시간 → 이벤트 +1
         const endIdx = (em > 0 ? eh : eh - 1) - START_HOUR;
-        if (endIdx >= 0 && endIdx < HOURS && endIdx !== startIdx) hourType[endIdx] = 'active';
+        if (endIdx >= 0 && endIdx < HOURS && endIdx !== startIdx) hourEvents[endIdx]++;
 
-        // 중간 시간 → passing (이미 active면 유지)
+        // 중간 시간 → passing
         for (let h = sh + 1; h < eh; h++) {
             const idx = h - START_HOUR;
-            if (idx >= 0 && idx < HOURS && hourType[idx] === 'empty') {
-                hourType[idx] = 'passing';
-            }
+            if (idx >= 0 && idx < HOURS) hourPassing[idx] = true;
         }
     });
 
-    // 2) 시간대별 높이 배정
-    const hourH = hourType.map(type => {
-        if (type === 'active') return ACTIVE_PX;
-        if (type === 'passing') return PASSING_PX;
-        return EMPTY_PX;
-    });
+    // 2) 시간대별 높이 = 밀집도에 비례
+    const hourH = [];
+    for (let i = 0; i < HOURS; i++) {
+        if (hourEvents[i] > 0) {
+            // 이벤트가 많을수록 높이 증가
+            hourH.push(BASE_PX + hourEvents[i] * PER_EVENT_PX);
+        } else if (hourPassing[i]) {
+            hourH.push(PASSING_PX);
+        } else {
+            hourH.push(EMPTY_PX);
+        }
+    }
 
     // 누적 Y
     const hourY = [0];
