@@ -185,7 +185,7 @@ function positionBlocks() {
     document.querySelector('.tt-columns').style.height = totalH + 'px';
 
     // 7) 블록 배치
-    blocks.forEach(block => {
+    document.querySelectorAll('.tt-block').forEach(block => {
         const [sh, sm] = block.dataset.start.split(':').map(Number);
         const [eh, em] = block.dataset.end.split(':').map(Number);
 
