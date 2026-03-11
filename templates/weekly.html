@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}주간 시간표 - 우리가족 시간표{% endblock %}
+{% block header %}주간 시간표{% endblock %}
+
+{% block content %}
+{% if not children %}
+    <div class="empty-state">
+        <p>등록된 자녀가 없습니다.</p>
+        <a href="/settings" class="btn btn-primary">자녀 등록하기</a>
+    </div>
+{% else %}
+    <!-- 자녀 탭 -->
+    <div class="child-tabs">
+        {% for child in children %}
+        <a href="/weekly?child_id={{ child.id }}&week={{ week_offset }}"
+           class="child-tab {% if child.id == selected_child_id %}active{% endif %}"
+           style="{% if child.id == selected_child_id %}background: {{ child.color }}; color: white;{% else %}color: {{ child.color }}; border-color: {{ child.color }};{% endif %}">
+            {{ child.name }}
+        </a>
+        {% endfor %}
+    </div>
+
+    <!-- 주간 네비게이션 -->
+    <div class="week-nav">
+        <a href="/weekly?child_id={{ selected_child_id }}&week={{ week_offset - 1 }}" class="week-nav-btn">&lt; 이전</a>
+        <div class="week-nav-center">
+            <div class="week-title">{{ week_title }}</div>
+            {% if week_offset != 0 %}
+            <a href="/weekly?child_id={{ selected_child_id }}&week=0" class="week-today-btn">오늘</a>
+            {% endif %}
+        </div>
+        <a href="/weekly?child_id={{ selected_child_id }}&week={{ week_offset + 1 }}" class="week-nav-btn">다음 &gt;</a>
+    </div>
+
+    <!-- 주간 그리드 -->
+    <div class="weekly-grid">
+        <div class="weekly-header">
+            {% for day in week_header %}
+            <div class="weekly-day-header {% if day.is_today %}today{% endif %} {% if loop.index0 == 0 %}sunday{% endif %} {% if loop.index0 == 6 %}saturday{% endif %}">
+                <div class="day-name">{{ day.name }}</div>
+                <div class="day-date">{{ day.date_str }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="weekly-body">
+            {% for i in range(7) %}
+            <div class="weekly-column {% if week_header[i].is_today %}today-col{% endif %} {% if i == 0 %}sunday-col{% endif %} {% if i == 6 %}saturday-col{% endif %}">
+                <!-- 특별 일정 -->
+                {% if special_events_data.get(i) %}
+                    {% for ev in special_events_data[i] %}
+                    <div class="weekly-special">
+                        &#9733; {{ ev.title }}
+                    </div>
+                    {% endfor %}
+                {% endif %}
+
+                <!-- 반복 일정 -->
+                {% if weekly_data.get(i) %}
+                    {% for s in weekly_data[i] %}
+                    <div class="weekly-cell category-{{ s.category }}" onclick='showScheduleDetail({{ s|tojson }})'>
+                        <div class="cell-time">{{ s.start_time }}-{{ s.end_time }}</div>
+                        <div class="cell-title">{{ s.title }}</div>
+                        <span class="cell-badge cat-{{ s.category }}">{{ s.category_label }}</span>
+                        {% if s.pickup_person %}<div class="cell-pickup">&#128664; {{ s.pickup_person }}</div>{% endif %}
+                    </div>
+                    {% endfor %}
+                {% elif not special_events_data.get(i) %}
+                    <div class="weekly-empty">-</div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showScheduleDetail(s) {
+    let html = `
+        <div class="detail-row"><strong>시간</strong> ${s.start_time} ~ ${s.end_time}</div>
+        <div class="detail-row"><strong>분류</strong> <span class="category-badge cat-${s.category}">${s.category_label}</span></div>
+    `;
+    if (s.location) html += `<div class="detail-row"><strong>장소</strong> ${s.location}</div>`;
+    if (s.pickup_person) html += `<div class="detail-row"><strong>픽업</strong> ${s.pickup_person}</div>`;
+    if (s.memo) html += `<div class="detail-row"><strong>메모</strong> ${s.memo}</div>`;
+    openModal(s.title, html);
+}
+
+// 스와이프로 주간 이동
+let touchStartX = 0;
+document.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; });
+document.addEventListener('touchend', e => {
+    const diff = e.changedTouches[0].clientX - touchStartX;
+    if (Math.abs(diff) > 80) {
+        const dir = diff > 0 ? {{ week_offset - 1 }} : {{ week_offset + 1 }};
+        location.href = `/weekly?child_id={{ selected_child_id }}&week=${dir}`;
+    }
+});
+</script>
+{% endblock %}

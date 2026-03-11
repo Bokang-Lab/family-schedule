@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}오늘 - 우리가족 시간표{% endblock %}
+{% block header %}
+    <span class="header-date">{{ today_str }} ({{ day_name }})</span>
+{% endblock %}
+
+{% block content %}
+{% if not children_schedules %}
+    <div class="empty-state">
+        <p>등록된 자녀가 없습니다.</p>
+        <a href="/settings" class="btn btn-primary">자녀 등록하기</a>
+    </div>
+{% elif today_dow > 4 %}
+    <div class="empty-state weekend">
+        <div class="weekend-icon">&#127774;</div>
+        <p>주말이에요! 푹 쉬세요~</p>
+    </div>
+{% else %}
+    {% for cs in children_schedules %}
+    <div class="child-card" style="border-left: 4px solid {{ cs.child.color }}">
+        <div class="child-header">
+            <span class="child-dot" style="background: {{ cs.child.color }}"></span>
+            <span class="child-name">{{ cs.child.name }}</span>
+            <span class="child-grade">{{ cs.child.grade }}학년</span>
+        </div>
+
+        {% if cs.special_events %}
+        <div class="special-events">
+            {% for ev in cs.special_events %}
+            <div class="special-badge">&#9733; {{ ev.title }}{% if ev.description %} - {{ ev.description }}{% endif %}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if cs.schedules %}
+        <div class="timeline">
+            {% for s in cs.schedules %}
+            <div class="timeline-item category-{{ s.category }} {% if now_time >= s.start_time and now_time < s.end_time %}current{% endif %}">
+                <div class="timeline-time">
+                    <span class="time-start">{{ s.start_time }}</span>
+                    <span class="time-end">{{ s.end_time }}</span>
+                </div>
+                <div class="timeline-content">
+                    <div class="timeline-title">{{ s.title }}</div>
+                    <div class="timeline-meta">
+                        <span class="category-badge cat-{{ s.category }}">{{ s.category_label }}</span>
+                        {% if s.location %}<span class="location">&#128205; {{ s.location }}</span>{% endif %}
+                        {% if s.pickup_person %}<span class="pickup">&#128664; {{ s.pickup_person }}</span>{% endif %}
+                    </div>
+                    {% if s.memo %}<div class="timeline-memo">&#128221; {{ s.memo }}</div>{% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="no-schedule">오늘 일정이 없습니다.</div>
+        {% endif %}
+    </div>
+    {% endfor %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // 1분마다 현재 시간 업데이트하여 하이라이트 갱신
+    setInterval(() => {
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mm = String(now.getMinutes()).padStart(2, '0');
+        const nowTime = hh + ':' + mm;
+
+        document.querySelectorAll('.timeline-item').forEach(item => {
+            const times = item.querySelectorAll('.time-start, .time-end');
+            if (times.length === 2) {
+                const start = times[0].textContent;
+                const end = times[1].textContent;
+                item.classList.toggle('current', nowTime >= start && nowTime < end);
+            }
+        });
+    }, 60000);
+</script>
+{% endblock %}

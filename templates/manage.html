@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+{% block title %}일정 관리 - 우리가족 시간표{% endblock %}
+{% block header %}일정 관리{% endblock %}
+
+{% block content %}
+{% if not children %}
+    <div class="empty-state">
+        <p>먼저 자녀를 등록해주세요.</p>
+        <a href="/settings" class="btn btn-primary">자녀 등록하기</a>
+    </div>
+{% else %}
+    <div class="child-tabs">
+        {% for child in children %}
+        <a href="/manage?child_id={{ child.id }}"
+           class="child-tab {% if child.id == selected_child_id %}active{% endif %}"
+           style="{% if child.id == selected_child_id %}background: {{ child.color }}; color: white;{% else %}color: {{ child.color }}; border-color: {{ child.color }};{% endif %}">
+            {{ child.name }}
+        </a>
+        {% endfor %}
+    </div>
+
+    <!-- 반복 일정 -->
+    <div class="section">
+        <div class="section-header">
+            <h2>반복 일정</h2>
+            <button onclick="showAddSchedule()" class="btn btn-sm btn-primary">+ 추가</button>
+        </div>
+
+        {% for dow in range(5) %}
+        {% set day_schedules = schedules | selectattr('day_of_week', 'equalto', dow) | list %}
+        {% if day_schedules %}
+        <div class="day-group">
+            <div class="day-label">{{ day_names[dow] }}요일</div>
+            {% for s in day_schedules %}
+            <div class="schedule-card category-{{ s.category }}">
+                <div class="schedule-info">
+                    <div class="schedule-time">{{ s.start_time }} - {{ s.end_time }}</div>
+                    <div class="schedule-title">{{ s.title }}</div>
+                    <span class="category-badge cat-{{ s.category }}">{{ s.category_label }}</span>
+                    {% if s.location %}<span class="meta-tag">&#128205; {{ s.location }}</span>{% endif %}
+                    {% if s.pickup_person %}<span class="meta-tag">&#128664; {{ s.pickup_person }}</span>{% endif %}
+                    {% if s.memo %}<div class="schedule-memo">&#128221; {{ s.memo }}</div>{% endif %}
+                </div>
+                <div class="schedule-actions">
+                    <button onclick='copySchedule({{ s|tojson }})' class="btn-icon" title="복사">&#128203;</button>
+                    <button onclick='showEditSchedule({{ s|tojson }})' class="btn-icon" title="수정">&#9998;</button>
+                    <button onclick="deleteSchedule({{ s.id }})" class="btn-icon btn-danger" title="삭제">&#128465;</button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endfor %}
+
+        {% if not schedules %}
+        <div class="no-schedule">등록된 반복 일정이 없습니다.</div>
+        {% endif %}
+    </div>
+
+    <!-- 특별 일정 -->
+    <div class="section">
+        <div class="section-header">
+            <h2>특별 일정</h2>
+            <button onclick="showAddSpecialEvent()" class="btn btn-sm btn-primary">+ 추가</button>
+        </div>
+
+        {% for ev in special_events %}
+        <div class="schedule-card special">
+            <div class="schedule-info">
+                <div class="schedule-time">{{ ev.date }}{% if ev.start_time %} {{ ev.start_time }}-{{ ev.end_time }}{% endif %}</div>
+                <div class="schedule-title">&#9733; {{ ev.title }}</div>
+                {% if ev.description %}<div class="schedule-memo">{{ ev.description }}</div>{% endif %}
+                {% if ev.cancel_normal %}<span class="meta-tag cancel">정규일정 취소</span>{% endif %}
+            </div>
+            <div class="schedule-actions">
+                <button onclick='showEditSpecialEvent({{ ev|tojson }})' class="btn-icon">&#9998;</button>
+                <button onclick="deleteSpecialEvent({{ ev.id }})" class="btn-icon btn-danger">&#128465;</button>
+            </div>
+        </div>
+        {% endfor %}
+
+        {% if not special_events %}
+        <div class="no-schedule">등록된 특별 일정이 없습니다.</div>
+        {% endif %}
+    </div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const CHILD_ID = {{ selected_child_id or 'null' }};
+const DAY_NAMES = ['월', '화', '수', '목', '금'];
+
+function showAddSchedule() {
+    const html = buildScheduleForm({});
+    openModal('일정 추가', html);
+}
+
+function showEditSchedule(s) {
+    const html = buildScheduleForm(s);
+    openModal('일정 수정', html);
+}
+
+function copySchedule(s) {
+    const copy = {...s, id: null};  // id 제거하여 새 일정으로 생성
+    const html = buildScheduleForm(copy);
+    openModal('일정 복사', html);
+}
+
+function buildScheduleForm(s) {
+    const isEdit = !!s.id;
+    return `
+    <form onsubmit="saveSchedule(event, ${s.id || 'null'})">
+        <div class="form-group">
+            <label>요일</label>
+            <select id="f-dow" required>
+                ${DAY_NAMES.map((d, i) => `<option value="${i}" ${s.day_of_week === i ? 'selected' : ''}>${d}요일</option>`).join('')}
+            </select>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>시작 시간</label>
+                <input type="time" id="f-start" value="${s.start_time || '09:00'}" required>
+            </div>
+            <div class="form-group">
+                <label>종료 시간</label>
+                <input type="time" id="f-end" value="${s.end_time || '10:00'}" required>
+            </div>
+        </div>
+        <div class="form-group">
+            <label>일정명</label>
+            <input type="text" id="f-title" value="${s.title || ''}" placeholder="예: 1~4교시, 돌봄교실, 태권도" required>
+        </div>
+        <div class="form-group">
+            <label>분류</label>
+            <select id="f-category" required>
+                <option value="school" ${s.category === 'school' ? 'selected' : ''}>정규수업</option>
+                <option value="aftercare" ${s.category === 'aftercare' ? 'selected' : ''}>돌봄교실</option>
+                <option value="after_school" ${s.category === 'after_school' ? 'selected' : ''}>방과후</option>
+                <option value="academy" ${s.category === 'academy' ? 'selected' : ''}>학원</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>장소 <span class="optional">(선택)</span></label>
+            <input type="text" id="f-location" value="${s.location || ''}" placeholder="예: 학교 운동장, 태권도장">
+        </div>
+        <div class="form-group">
+            <label>픽업 담당 <span class="optional">(선택)</span></label>
+            <input type="text" id="f-pickup" value="${s.pickup_person || ''}" placeholder="예: 아빠, 엄마, 할머니">
+        </div>
+        <div class="form-group">
+            <label>메모 <span class="optional">(선택)</span></label>
+            <input type="text" id="f-memo" value="${s.memo || ''}" placeholder="예: 체육복 필요, 준비물 등">
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">${isEdit ? '수정' : '추가'}</button>
+    </form>`;
+}
+
+async function saveSchedule(e, scheduleId) {
+    e.preventDefault();
+    const data = {
+        child_id: CHILD_ID,
+        day_of_week: parseInt(document.getElementById('f-dow').value),
+        start_time: document.getElementById('f-start').value,
+        end_time: document.getElementById('f-end').value,
+        title: document.getElementById('f-title').value,
+        category: document.getElementById('f-category').value,
+        location: document.getElementById('f-location').value,
+        pickup_person: document.getElementById('f-pickup').value,
+        memo: document.getElementById('f-memo').value,
+    };
+    const url = scheduleId ? `/api/schedule/${scheduleId}` : '/api/schedule';
+    const method = scheduleId ? 'PUT' : 'POST';
+    const res = await fetch(url, {method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)});
+    if (res.ok) { closeModal(); location.reload(); }
+    else showToast('저장에 실패했습니다.', true);
+}
+
+async function deleteSchedule(id) {
+    if (!confirm('이 일정을 삭제하시겠습니까?')) return;
+    const res = await fetch(`/api/schedule/${id}`, {method: 'DELETE'});
+    if (res.ok) location.reload();
+}
+
+function showAddSpecialEvent() {
+    const html = buildSpecialEventForm({});
+    openModal('특별 일정 추가', html);
+}
+
+function showEditSpecialEvent(ev) {
+    const html = buildSpecialEventForm(ev);
+    openModal('특별 일정 수정', html);
+}
+
+function buildSpecialEventForm(ev) {
+    const isEdit = !!ev.id;
+    return `
+    <form onsubmit="saveSpecialEvent(event, ${ev.id || 'null'})">
+        <div class="form-group">
+            <label>날짜</label>
+            <input type="date" id="fe-date" value="${ev.date || ''}" required>
+        </div>
+        <div class="form-group">
+            <label>제목</label>
+            <input type="text" id="fe-title" value="${ev.title || ''}" placeholder="예: 현장학습, 재량휴업" required>
+        </div>
+        <div class="form-group">
+            <label>설명 <span class="optional">(선택)</span></label>
+            <input type="text" id="fe-desc" value="${ev.description || ''}" placeholder="상세 내용">
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>시작 시간 <span class="optional">(선택)</span></label>
+                <input type="time" id="fe-start" value="${ev.start_time || ''}">
+            </div>
+            <div class="form-group">
+                <label>종료 시간 <span class="optional">(선택)</span></label>
+                <input type="time" id="fe-end" value="${ev.end_time || ''}">
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="checkbox-label">
+                <input type="checkbox" id="fe-cancel" ${ev.cancel_normal ? 'checked' : ''}>
+                이 날 정규 일정 취소
+            </label>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">${isEdit ? '수정' : '추가'}</button>
+    </form>`;
+}
+
+async function saveSpecialEvent(e, eventId) {
+    e.preventDefault();
+    const data = {
+        child_id: CHILD_ID,
+        date: document.getElementById('fe-date').value,
+        title: document.getElementById('fe-title').value,
+        description: document.getElementById('fe-desc').value,
+        start_time: document.getElementById('fe-start').value,
+        end_time: document.getElementById('fe-end').value,
+        cancel_normal: document.getElementById('fe-cancel').checked,
+    };
+    const url = eventId ? `/api/special-event/${eventId}` : '/api/special-event';
+    const method = eventId ? 'PUT' : 'POST';
+    const res = await fetch(url, {method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)});
+    if (res.ok) { closeModal(); location.reload(); }
+    else showToast('저장에 실패했습니다.', true);
+}
+
+async function deleteSpecialEvent(id) {
+    if (!confirm('이 특별 일정을 삭제하시겠습니까?')) return;
+    const res = await fetch(`/api/special-event/${id}`, {method: 'DELETE'});
+    if (res.ok) location.reload();
+}
+</script>
+{% endblock %}

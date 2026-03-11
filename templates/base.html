@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#4A90D9">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>{% block title %}우리가족 시간표{% endblock %}</title>
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="icon" href="/static/icons/icon-192.png">
+    <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header class="app-header">
+        <h1>{% block header %}우리가족 시간표{% endblock %}</h1>
+    </header>
+
+    <main class="app-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <nav class="bottom-nav">
+        <a href="/" class="nav-item {% if request.path == '/' %}active{% endif %}">
+            <span class="nav-icon">&#128197;</span>
+            <span class="nav-label">오늘</span>
+        </a>
+        <a href="/weekly" class="nav-item {% if request.path == '/weekly' %}active{% endif %}">
+            <span class="nav-icon">&#128198;</span>
+            <span class="nav-label">주간</span>
+        </a>
+        <a href="/manage" class="nav-item {% if request.path == '/manage' %}active{% endif %}">
+            <span class="nav-icon">&#9998;</span>
+            <span class="nav-label">관리</span>
+        </a>
+        <a href="/settings" class="nav-item {% if request.path == '/settings' %}active{% endif %}">
+            <span class="nav-icon">&#9881;</span>
+            <span class="nav-label">설정</span>
+        </a>
+    </nav>
+
+    <div id="toast" class="toast hidden"></div>
+    <div id="modal-overlay" class="modal-overlay hidden" onclick="closeModal()"></div>
+    <div id="modal" class="modal hidden">
+        <div class="modal-header">
+            <h3 id="modal-title"></h3>
+            <button onclick="closeModal()" class="modal-close">&times;</button>
+        </div>
+        <div id="modal-body" class="modal-body"></div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+    {% block scripts %}{% endblock %}
+
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/static/sw.js');
+        }
+    </script>
+</body>
+</html>

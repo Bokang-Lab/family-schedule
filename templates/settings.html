@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% block title %}설정 - 우리가족 시간표{% endblock %}
+{% block header %}설정{% endblock %}
+
+{% block content %}
+<!-- 가족 정보 -->
+<div class="section">
+    <div class="section-header">
+        <h2>가족 정보</h2>
+    </div>
+    <div class="settings-card">
+        <div class="form-group">
+            <label>가족 이름</label>
+            <div class="input-with-btn">
+                <input type="text" id="family-name" value="{{ family.name }}">
+                <button onclick="updateFamilyName()" class="btn btn-sm btn-primary">저장</button>
+            </div>
+        </div>
+        <div class="form-group">
+            <label>가족 코드 (공유용)</label>
+            <div class="family-code-display">
+                <span class="code-text">{{ family.code }}</span>
+                <button onclick="copyCode('{{ family.code }}')" class="btn btn-sm btn-outline">복사</button>
+            </div>
+            <p class="hint">이 코드를 가족에게 공유하면 같은 시간표를 볼 수 있어요.</p>
+        </div>
+    </div>
+</div>
+
+<!-- 자녀 관리 -->
+<div class="section">
+    <div class="section-header">
+        <h2>자녀 관리</h2>
+        <button onclick="showAddChild()" class="btn btn-sm btn-primary">+ 추가</button>
+    </div>
+
+    {% for child in children %}
+    <div class="settings-card child-settings" style="border-left: 4px solid {{ child.color }}">
+        <div class="child-settings-header">
+            <strong>{{ child.name }}</strong> ({{ child.grade }}학년)
+            {% if child.school_name %}<span class="school-tag">{{ child.school_name }}</span>{% endif %}
+        </div>
+        <div class="child-settings-actions">
+            <button onclick='showEditChild({{ child.to_dict()|tojson }})' class="btn btn-sm btn-outline">수정</button>
+            <button onclick="deleteChild({{ child.id }}, '{{ child.name }}')" class="btn btn-sm btn-danger-outline">삭제</button>
+        </div>
+    </div>
+    {% endfor %}
+
+    {% if not children %}
+    <div class="no-schedule">자녀를 등록해주세요.</div>
+    {% endif %}
+</div>
+
+<!-- 학기 관리 -->
+<div class="section">
+    <div class="section-header">
+        <h2>학기 관리</h2>
+        <button onclick="showAddSemester()" class="btn btn-sm btn-primary">+ 추가</button>
+    </div>
+
+    {% for sem in semesters %}
+    <div class="settings-card">
+        <div class="semester-info">
+            <strong>{{ sem.name }}</strong>
+            <span class="semester-dates">{{ sem.start_date.strftime('%Y.%m.%d') }} ~ {{ sem.end_date.strftime('%Y.%m.%d') }}</span>
+            {% if sem.is_active %}<span class="active-badge">진행중</span>{% endif %}
+        </div>
+        <div class="child-settings-actions">
+            <button onclick='showEditSemester({{ sem.to_dict()|tojson }})' class="btn btn-sm btn-outline">수정</button>
+            <button onclick="deleteSemester({{ sem.id }})" class="btn btn-sm btn-danger-outline">삭제</button>
+        </div>
+    </div>
+    {% endfor %}
+
+    {% if not semesters %}
+    <div class="no-schedule">학기를 등록해주세요.</div>
+    {% endif %}
+</div>
+
+<!-- 로그아웃 -->
+<div class="section">
+    <a href="/logout" class="btn btn-full btn-outline" style="text-align:center;">로그아웃</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const COLORS = ['#4A90D9', '#E91E63', '#4CAF50', '#FF9800', '#9C27B0', '#00BCD4', '#FF5722'];
+
+async function updateFamilyName() {
+    const name = document.getElementById('family-name').value.trim();
+    if (!name) return;
+    const res = await fetch('/api/family', {
+        method: 'PUT', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name})
+    });
+    if (res.ok) showToast('저장되었습니다.');
+}
+
+function copyCode(code) {
+    navigator.clipboard.writeText(code).then(() => showToast('코드가 복사되었습니다.'));
+}
+
+function showAddChild() {
+    const html = buildChildForm({});
+    openModal('자녀 추가', html);
+}
+
+function showEditChild(child) {
+    const html = buildChildForm(child);
+    openModal('자녀 수정', html);
+}
+
+function buildChildForm(c) {
+    const isEdit = !!c.id;
+    return `
+    <form onsubmit="saveChild(event, ${c.id || 'null'})">
+        <div class="form-group">
+            <label>이름</label>
+            <input type="text" id="fc-name" value="${c.name || ''}" placeholder="예: 서연" required>
+        </div>
+        <div class="form-group">
+            <label>학년</label>
+            <select id="fc-grade" required>
+                ${[1,2,3,4,5,6].map(g => `<option value="${g}" ${c.grade === g ? 'selected' : ''}>${g}학년</option>`).join('')}
+            </select>
+        </div>
+        <div class="form-group">
+            <label>학교 이름 <span class="optional">(선택)</span></label>
+            <input type="text" id="fc-school" value="${c.school_name || ''}" placeholder="예: ○○초등학교">
+        </div>
+        <div class="form-group">
+            <label>색상</label>
+            <div class="color-picker">
+                ${COLORS.map(color => `
+                    <button type="button" class="color-dot ${c.color === color ? 'selected' : ''}"
+                            style="background:${color}" onclick="selectColor(this, '${color}')"></button>
+                `).join('')}
+            </div>
+            <input type="hidden" id="fc-color" value="${c.color || '#4A90D9'}">
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">${isEdit ? '수정' : '추가'}</button>
+    </form>`;
+}
+
+function selectColor(el, color) {
+    document.querySelectorAll('.color-dot').forEach(d => d.classList.remove('selected'));
+    el.classList.add('selected');
+    document.getElementById('fc-color').value = color;
+}
+
+async function saveChild(e, childId) {
+    e.preventDefault();
+    const data = {
+        name: document.getElementById('fc-name').value,
+        grade: parseInt(document.getElementById('fc-grade').value),
+        school_name: document.getElementById('fc-school').value,
+        color: document.getElementById('fc-color').value,
+    };
+    const url = childId ? `/api/child/${childId}` : '/api/child';
+    const method = childId ? 'PUT' : 'POST';
+    const res = await fetch(url, {method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)});
+    if (res.ok) { closeModal(); location.reload(); }
+}
+
+async function deleteChild(id, name) {
+    if (!confirm(`${name}의 모든 일정이 삭제됩니다. 정말 삭제하시겠습니까?`)) return;
+    const res = await fetch(`/api/child/${id}`, {method: 'DELETE'});
+    if (res.ok) location.reload();
+}
+
+function showAddSemester() {
+    const html = buildSemesterForm({});
+    openModal('학기 추가', html);
+}
+
+function showEditSemester(sem) {
+    const html = buildSemesterForm(sem);
+    openModal('학기 수정', html);
+}
+
+function buildSemesterForm(s) {
+    const isEdit = !!s.id;
+    return `
+    <form onsubmit="saveSemester(event, ${s.id || 'null'})">
+        <div class="form-group">
+            <label>학기 이름</label>
+            <input type="text" id="fs-name" value="${s.name || ''}" placeholder="예: 2026년 1학기" required>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>시작일</label>
+                <input type="date" id="fs-start" value="${s.start_date || ''}" required>
+            </div>
+            <div class="form-group">
+                <label>종료일</label>
+                <input type="date" id="fs-end" value="${s.end_date || ''}" required>
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="checkbox-label">
+                <input type="checkbox" id="fs-active" ${s.is_active !== false ? 'checked' : ''}>
+                현재 진행중
+            </label>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">${isEdit ? '수정' : '추가'}</button>
+    </form>`;
+}
+
+async function saveSemester(e, semesterId) {
+    e.preventDefault();
+    const data = {
+        name: document.getElementById('fs-name').value,
+        start_date: document.getElementById('fs-start').value,
+        end_date: document.getElementById('fs-end').value,
+        is_active: document.getElementById('fs-active').checked,
+    };
+    const url = semesterId ? `/api/semester/${semesterId}` : '/api/semester';
+    const method = semesterId ? 'PUT' : 'POST';
+    const res = await fetch(url, {method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)});
+    if (res.ok) { closeModal(); location.reload(); }
+}
+
+async function deleteSemester(id) {
+    if (!confirm('이 학기를 삭제하시겠습니까?')) return;
+    const res = await fetch(`/api/semester/${id}`, {method: 'DELETE'});
+    if (res.ok) location.reload();
+}
+</script>
+{% endblock %}
