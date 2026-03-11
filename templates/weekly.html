@@ -109,43 +109,44 @@ function positionBlocks() {
     const START_HOUR = 8;
     const END_HOUR = 18;
     const HOURS = END_HOUR - START_HOUR;
-    const BASE_PX = 45;       // 일정 전환 기본 높이
-    const PER_EVENT_PX = 30;  // 전환 1건당 추가 높이
-    const PASSING_PX = 18;    // 긴 블록 중간 (변화 없음)
-    const EMPTY_PX = 12;      // 빈 시간대
-    const MIN_BLOCK_H = 42;   // 블록 최소 높이
+    const BASE_PX = 40;       // 이벤트 있는 시간 기본 높이
+    const PER_EVENT_PX = 22;  // 이벤트 1건당 추가
+    const PASSING_PX = 16;    // 긴 블록 중간
+    const EMPTY_PX = 10;      // 빈 시간대
+    const MIN_BLOCK_H = 40;   // 블록 최소 높이
 
-    const blocks = document.querySelectorAll('.tt-block');
+    // 1) 요일별로 각 시간의 이벤트 수를 세고, 가장 바쁜 요일 기준으로 결정
+    const hourMaxEvents = new Array(HOURS).fill(0);
+    const hourPassing = new Array(HOURS).fill(false);
 
-    // 1) 시간대별 전환 횟수 (시작/끝 이벤트 수) 집계
-    const hourEvents = new Array(HOURS).fill(0);     // 전환 횟수
-    const hourPassing = new Array(HOURS).fill(false); // 지나가는 일정 유무
+    document.querySelectorAll('.tt-day-col').forEach(col => {
+        const colEvents = new Array(HOURS).fill(0);
+        col.querySelectorAll('.tt-block').forEach(block => {
+            const [sh] = block.dataset.start.split(':').map(Number);
+            const [eh, em] = block.dataset.end.split(':').map(Number);
 
-    blocks.forEach(block => {
-        const [sh, sm] = block.dataset.start.split(':').map(Number);
-        const [eh, em] = block.dataset.end.split(':').map(Number);
+            const si = sh - START_HOUR;
+            if (si >= 0 && si < HOURS) colEvents[si]++;
 
-        // 시작 시간 → 이벤트 +1
-        const startIdx = sh - START_HOUR;
-        if (startIdx >= 0 && startIdx < HOURS) hourEvents[startIdx]++;
+            const ei = (em > 0 ? eh : eh - 1) - START_HOUR;
+            if (ei >= 0 && ei < HOURS && ei !== si) colEvents[ei]++;
 
-        // 종료 시간 → 이벤트 +1
-        const endIdx = (em > 0 ? eh : eh - 1) - START_HOUR;
-        if (endIdx >= 0 && endIdx < HOURS && endIdx !== startIdx) hourEvents[endIdx]++;
+            for (let h = sh + 1; h < eh; h++) {
+                const idx = h - START_HOUR;
+                if (idx >= 0 && idx < HOURS) hourPassing[idx] = true;
+            }
+        });
 
-        // 중간 시간 → passing
-        for (let h = sh + 1; h < eh; h++) {
-            const idx = h - START_HOUR;
-            if (idx >= 0 && idx < HOURS) hourPassing[idx] = true;
+        for (let i = 0; i < HOURS; i++) {
+            hourMaxEvents[i] = Math.max(hourMaxEvents[i], colEvents[i]);
         }
     });
 
-    // 2) 시간대별 높이 = 밀집도에 비례
+    // 2) 시간대별 높이 (가장 바쁜 요일 기준)
     const hourH = [];
     for (let i = 0; i < HOURS; i++) {
-        if (hourEvents[i] > 0) {
-            // 이벤트가 많을수록 높이 증가
-            hourH.push(BASE_PX + hourEvents[i] * PER_EVENT_PX);
+        if (hourMaxEvents[i] > 0) {
+            hourH.push(BASE_PX + hourMaxEvents[i] * PER_EVENT_PX);
         } else if (hourPassing[i]) {
             hourH.push(PASSING_PX);
         } else {
@@ -153,7 +154,6 @@ function positionBlocks() {
         }
     }
 
-    // 누적 Y
     const hourY = [0];
     for (let i = 0; i < HOURS; i++) {
         hourY.push(hourY[i] + hourH[i]);
