@@ -259,7 +259,7 @@ body {
     border-right: 1px solid var(--border);
 }
 .tt-hour-label {
-    height: 60px;
+    height: 60px; /* JS에서 동적 조정 */
     display: flex;
     align-items: flex-start;
     justify-content: center;
@@ -270,6 +270,8 @@ body {
     border-top: 1px solid var(--border);
     position: relative;
     transform: translateY(-7px);
+    transition: height 0.2s;
+    overflow: hidden;
 }
 
 /* 7일 컬럼 컨테이너 */
@@ -277,7 +279,7 @@ body {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
     position: relative;
-    height: 660px; /* 11시간 * 60px */
+    /* height: JS에서 동적 설정 */
 }
 
 /* 시간 그리드 라인 */
