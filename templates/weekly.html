@@ -109,10 +109,10 @@ function positionBlocks() {
     const START_HOUR = 8;
     const END_HOUR = 18;
     const HOURS = END_HOUR - START_HOUR;
-    const BASE_PX = 40;       // 이벤트 있는 시간 기본 높이
-    const PER_EVENT_PX = 22;  // 이벤트 1건당 추가
-    const PASSING_PX = 16;    // 긴 블록 중간
-    const EMPTY_PX = 10;      // 빈 시간대
+    const BASE_PX = 45;       // 이벤트 있는 시간 기본 높이
+    const PER_EVENT_PX = 20;  // 이벤트 1건당 추가
+    const PASSING_PX = 22;    // 긴 블록 중간
+    const EMPTY_PX = 28;      // 빈 시간대 (시간 감각 유지)
     const MIN_BLOCK_H = 40;   // 블록 최소 높이
 
     // 1) 요일별로 각 시간의 이벤트 수를 세고, 가장 바쁜 요일 기준으로 결정
