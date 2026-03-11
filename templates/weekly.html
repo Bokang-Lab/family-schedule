@@ -104,73 +104,33 @@ function showScheduleDetail(s) {
     openModal(s.title, html);
 }
 
-// 주간 시간표 레이아웃 - 고정 px/분 + 겹침 방지
+// 주간 시간표 - 정확한 시간 비례 배치 (겹침 방지 없음)
 function positionBlocks() {
-    const START_HOUR = 8;
-    const END_HOUR = 18;
-    const HOURS = END_HOUR - START_HOUR;
-    const PX_PER_MIN = 1.0;
-    const HOUR_PX = 60 * PX_PER_MIN;
-    const GAP = 2;
-    const MIN_BLOCK_H = 28;
+    const START = 8, END = 18, HOURS = END - START;
+    const PPM = 1.5;           // 1.5px per minute
+    const HPX = 60 * PPM;      // 90px per hour
+    const TOTAL = HOURS * HPX;  // 900px total
 
-    // 1) 내용 높이 측정
-    const allBlocks = document.querySelectorAll('.tt-block');
-    allBlocks.forEach(block => {
-        block.style.height = 'auto';
-        block.style.overflow = 'visible';
-        block._naturalH = block.scrollHeight;
-    });
-
-    // 2) 시간→px 변환 (고정 비율)
-    function timeToPx(h, m) {
-        return ((h - START_HOUR) * 60 + m) * PX_PER_MIN;
-    }
-
-    // 3) 요일별 블록 배치 (시간 비례 + 겹침 방지)
-    let maxBottom = HOURS * HOUR_PX;
-
+    // 모든 블록을 정확한 시간 위치에 배치
     document.querySelectorAll('.tt-day-col').forEach(col => {
-        const colBlocks = Array.from(col.querySelectorAll('.tt-block'))
-            .sort((a, b) => a.dataset.start.localeCompare(b.dataset.start));
-
-        let prevBottom = 0;
-
-        colBlocks.forEach(block => {
+        Array.from(col.querySelectorAll('.tt-block')).forEach((block, idx) => {
             const [sh, sm] = block.dataset.start.split(':').map(Number);
             const [eh, em] = block.dataset.end.split(':').map(Number);
-
-            const timeTop = timeToPx(sh, sm);
-            const timeBottom = timeToPx(eh, em);
-            const timeDuration = timeBottom - timeTop;
-
-            // 시간 위치에 배치하되, 이전 블록과 겹치면 밀기
-            const actualTop = Math.max(timeTop, prevBottom);
-            // 높이: 시간 비례 vs 내용 높이 vs 최소 높이
-            const height = Math.max(timeDuration, block._naturalH, MIN_BLOCK_H);
-
-            block.style.top = actualTop + 'px';
-            block.style.height = height + 'px';
+            const top = ((sh - START) * 60 + sm) * PPM;
+            const height = ((eh - START) * 60 + em) * PPM - top;
+            block.style.top = top + 'px';
+            block.style.height = Math.max(height, 14) + 'px';
             block.style.overflow = 'hidden';
-
-            prevBottom = actualTop + height + GAP;
+            block.style.zIndex = 2 + idx;
         });
-
-        if (prevBottom > maxBottom) maxBottom = prevBottom;
     });
 
-    // 4) 그리드 라인 & 시간 라벨 (고정 높이)
-    document.querySelectorAll('.tt-grid-line').forEach((l, i) => {
-        l.style.top = (i * HOUR_PX) + 'px';
-    });
-    document.querySelectorAll('.tt-hour-label').forEach((l, i) => {
-        if (i < HOURS) l.style.height = HOUR_PX + 'px';
-    });
-    document.querySelector('.tt-columns').style.height = maxBottom + 'px';
-
-    // 5) 시간 라벨 총 높이도 맞추기
-    const labelsContainer = document.querySelector('.tt-time-labels');
-    if (labelsContainer) labelsContainer.style.height = maxBottom + 'px';
+    // 그리드 라인 & 시간 라벨 (고정 90px/시간)
+    document.querySelectorAll('.tt-grid-line').forEach((l, i) => { l.style.top = (i * HPX) + 'px'; });
+    document.querySelectorAll('.tt-hour-label').forEach((l, i) => { if (i < HOURS) l.style.height = HPX + 'px'; });
+    document.querySelector('.tt-columns').style.height = TOTAL + 'px';
+    const labels = document.querySelector('.tt-time-labels');
+    if (labels) labels.style.height = TOTAL + 'px';
 }
 
 positionBlocks();
