@@ -214,80 +214,151 @@ body {
     text-decoration: none;
 }
 
-/* ─── 주간 시간표 ─── */
-.weekly-grid {
+/* ─── 시간 기반 주간 시간표 ─── */
+.timetable {
     background: var(--card-bg);
     border-radius: var(--radius);
     box-shadow: var(--shadow);
     overflow: hidden;
 }
-.weekly-header {
+
+/* 헤더 (시간칸 + 요일) */
+.tt-header {
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
+    grid-template-columns: 36px repeat(7, 1fr);
     background: var(--primary);
     color: white;
 }
-.weekly-day-header {
+.tt-time-col {
+    background: var(--primary-dark);
+}
+.tt-day-header {
     text-align: center;
-    padding: 8px 2px;
+    padding: 6px 2px;
     font-weight: 600;
-    font-size: 0.8rem;
+    border-left: 1px solid rgba(255,255,255,0.15);
 }
-.weekly-day-header .day-name { font-size: 0.75rem; }
-.weekly-day-header .day-date { font-size: 0.7rem; opacity: 0.85; margin-top: 1px; }
-.weekly-day-header.today {
-    background: rgba(255,255,255,0.25);
-    border-radius: 8px 8px 0 0;
+.tt-day-header .day-name { font-size: 0.7rem; }
+.tt-day-header .day-date { font-size: 0.65rem; opacity: 0.85; margin-top: 1px; }
+.tt-day-header.today {
+    background: rgba(255,255,255,0.2);
 }
-.weekly-day-header.sunday { color: #FF8A8A; }
-.weekly-day-header.saturday { color: #8AC4FF; }
+.tt-day-header.sunday { color: #FF8A8A; }
+.tt-day-header.saturday { color: #8AC4FF; }
 
-.weekly-body {
+/* 본문 */
+.tt-body {
+    display: grid;
+    grid-template-columns: 36px 1fr;
+    overflow-x: auto;
+}
+
+/* 좌측 시간 라벨 */
+.tt-time-labels {
+    background: #F8F9FA;
+    border-right: 1px solid var(--border);
+}
+.tt-hour-label {
+    height: 60px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 0;
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: var(--text-light);
+    border-top: 1px solid var(--border);
+    position: relative;
+    transform: translateY(-7px);
+}
+
+/* 7일 컬럼 컨테이너 */
+.tt-columns {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
-    gap: 1px;
-    background: var(--border);
+    position: relative;
+    height: 660px; /* 11시간 * 60px */
 }
-.weekly-column {
-    background: var(--card-bg);
-    min-height: 80px;
-    padding: 3px;
-}
-.weekly-column.today-col { background: #F0F7FF; }
-.weekly-column.sunday-col { background: #FFF8F8; }
-.weekly-column.saturday-col { background: #F8FBFF; }
 
-.weekly-special {
-    padding: 4px;
-    margin-bottom: 3px;
+/* 시간 그리드 라인 */
+.tt-grid-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    border-top: 1px solid var(--border);
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* 각 요일 컬럼 */
+.tt-day-col {
+    position: relative;
+    border-left: 1px solid var(--border);
+    min-height: 100%;
+}
+.tt-day-col.today-col { background: rgba(74, 144, 217, 0.04); }
+.tt-day-col.sunday-col { background: rgba(255, 100, 100, 0.03); }
+.tt-day-col.saturday-col { background: rgba(100, 150, 255, 0.03); }
+
+/* 일정 블록 */
+.tt-block {
+    position: absolute;
+    left: 1px;
+    right: 1px;
     border-radius: 4px;
+    padding: 2px 3px;
+    cursor: pointer;
+    overflow: hidden;
+    z-index: 2;
+    border-left: 3px solid var(--border);
+    transition: opacity 0.2s;
+    background: white;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+.tt-block:active { opacity: 0.8; }
+.tt-block.category-school { border-left-color: var(--cat-school); background: #EBF5FB; }
+.tt-block.category-aftercare { border-left-color: var(--cat-aftercare); background: #EAFAF1; }
+.tt-block.category-after_school { border-left-color: var(--cat-after_school); background: #FEF9E7; }
+.tt-block.category-academy { border-left-color: var(--cat-academy); background: #FDEDEC; }
+
+.tt-block-title {
+    font-size: 0.6rem;
+    font-weight: 700;
+    line-height: 1.2;
+    word-break: keep-all;
+    overflow: hidden;
+}
+.tt-block-time {
+    font-size: 0.5rem;
+    color: var(--text-light);
+}
+.tt-block .cell-badge { font-size: 0.45rem; padding: 0 3px; }
+.tt-block-pickup { font-size: 0.5rem; color: var(--text-light); }
+
+/* 특별 일정 (상단 배지) */
+.tt-special {
+    position: absolute;
+    top: 2px;
+    left: 50%;
+    transform: translateX(-50%);
     background: #FFF3CD;
     color: #856404;
-    font-size: 0.6rem;
-    font-weight: 600;
-    text-align: center;
-    word-break: keep-all;
+    font-size: 0.55rem;
+    padding: 1px 4px;
+    border-radius: 3px;
+    z-index: 3;
+    white-space: nowrap;
 }
-.weekly-cell {
-    padding: 6px;
-    margin-bottom: 4px;
-    border-radius: 6px;
-    background: var(--bg);
-    border-left: 3px solid var(--border);
-    cursor: pointer;
-    transition: transform 0.1s;
-}
-.weekly-cell:active { transform: scale(0.97); }
-.weekly-cell.category-school { border-left-color: var(--cat-school); }
-.weekly-cell.category-aftercare { border-left-color: var(--cat-aftercare); }
-.weekly-cell.category-after_school { border-left-color: var(--cat-after_school); }
-.weekly-cell.category-academy { border-left-color: var(--cat-academy); }
 
-.cell-time { font-size: 0.65rem; color: var(--text-light); }
-.cell-title { font-size: 0.75rem; font-weight: 600; margin: 2px 0; word-break: keep-all; }
-.cell-badge { font-size: 0.55rem; padding: 1px 4px; }
-.cell-pickup { font-size: 0.6rem; color: var(--text-light); }
-.weekly-empty { text-align: center; padding: 20px 0; color: var(--text-light); font-size: 0.8rem; }
+/* 반응형 - 작은 화면 */
+@media (max-width: 480px) {
+    .tt-header { grid-template-columns: 28px repeat(7, 1fr); }
+    .tt-body { grid-template-columns: 28px 1fr; }
+    .tt-hour-label { font-size: 0.55rem; }
+    .tt-block-title { font-size: 0.5rem; }
+    .tt-block-time { font-size: 0.45rem; }
+    .tt-block .cell-badge { display: none; }
+}
 
 /* ─── 관리 페이지 ─── */
 .section { margin-bottom: 24px; }

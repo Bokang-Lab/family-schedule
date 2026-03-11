@@ -32,43 +32,60 @@
         <a href="/weekly?child_id={{ selected_child_id }}&week={{ week_offset + 1 }}" class="week-nav-btn">다음 &gt;</a>
     </div>
 
-    <!-- 주간 그리드 -->
-    <div class="weekly-grid">
-        <div class="weekly-header">
+    <!-- 시간 기반 주간 그리드 -->
+    <div class="timetable">
+        <!-- 헤더: 시간 + 요일 -->
+        <div class="tt-header">
+            <div class="tt-time-col"></div>
             {% for day in week_header %}
-            <div class="weekly-day-header {% if day.is_today %}today{% endif %} {% if loop.index0 == 0 %}sunday{% endif %} {% if loop.index0 == 6 %}saturday{% endif %}">
+            <div class="tt-day-header {% if day.is_today %}today{% endif %} {% if loop.index0 == 0 %}sunday{% endif %} {% if loop.index0 == 6 %}saturday{% endif %}">
                 <div class="day-name">{{ day.name }}</div>
                 <div class="day-date">{{ day.date_str }}</div>
             </div>
             {% endfor %}
         </div>
-        <div class="weekly-body">
-            {% for i in range(7) %}
-            <div class="weekly-column {% if week_header[i].is_today %}today-col{% endif %} {% if i == 0 %}sunday-col{% endif %} {% if i == 6 %}saturday-col{% endif %}">
-                <!-- 특별 일정 -->
-                {% if special_events_data.get(i) %}
-                    {% for ev in special_events_data[i] %}
-                    <div class="weekly-special">
-                        &#9733; {{ ev.title }}
-                    </div>
-                    {% endfor %}
-                {% endif %}
 
-                <!-- 반복 일정 -->
-                {% if weekly_data.get(i) %}
-                    {% for s in weekly_data[i] %}
-                    <div class="weekly-cell category-{{ s.category }}" onclick='showScheduleDetail({{ s|tojson }})'>
-                        <div class="cell-time">{{ s.start_time }}-{{ s.end_time }}</div>
-                        <div class="cell-title">{{ s.title }}</div>
-                        <span class="cell-badge cat-{{ s.category }}">{{ s.category_label }}</span>
-                        {% if s.pickup_person %}<div class="cell-pickup">&#128664; {{ s.pickup_person }}</div>{% endif %}
-                    </div>
-                    {% endfor %}
-                {% elif not special_events_data.get(i) %}
-                    <div class="weekly-empty">-</div>
-                {% endif %}
+        <!-- 본문: 시간축 + 일정 -->
+        <div class="tt-body">
+            <!-- 시간 라벨 (좌측) -->
+            <div class="tt-time-labels">
+                {% for h in range(8, 19) %}
+                <div class="tt-hour-label">{{ '%02d'|format(h) }}</div>
+                {% endfor %}
             </div>
-            {% endfor %}
+
+            <!-- 7일 컬럼 -->
+            <div class="tt-columns">
+                <!-- 시간 그리드 라인 -->
+                {% for h in range(8, 19) %}
+                <div class="tt-grid-line" style="top: {{ (h - 8) * 60 }}px;"></div>
+                {% endfor %}
+
+                {% for i in range(7) %}
+                <div class="tt-day-col {% if week_header[i].is_today %}today-col{% endif %} {% if i == 0 %}sunday-col{% endif %} {% if i == 6 %}saturday-col{% endif %}">
+                    <!-- 특별 일정 -->
+                    {% if special_events_data.get(i) %}
+                        {% for ev in special_events_data[i] %}
+                        <div class="tt-special">&#9733;</div>
+                        {% endfor %}
+                    {% endif %}
+
+                    <!-- 반복 일정 블록 -->
+                    {% if weekly_data.get(i) %}
+                        {% for s in weekly_data[i] %}
+                        <div class="tt-block category-{{ s.category }}"
+                             onclick='showScheduleDetail({{ s|tojson }})'
+                             data-start="{{ s.start_time }}" data-end="{{ s.end_time }}">
+                            <div class="tt-block-title">{{ s.title }}</div>
+                            <div class="tt-block-time">{{ s.start_time }}-{{ s.end_time }}</div>
+                            <span class="cell-badge cat-{{ s.category }}">{{ s.category_label }}</span>
+                            {% if s.pickup_person %}<div class="tt-block-pickup">&#128664; {{ s.pickup_person }}</div>{% endif %}
+                        </div>
+                        {% endfor %}
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
         </div>
     </div>
 {% endif %}
@@ -86,6 +103,29 @@ function showScheduleDetail(s) {
     if (s.memo) html += `<div class="detail-row"><strong>메모</strong> ${s.memo}</div>`;
     openModal(s.title, html);
 }
+
+// 일정 블록 위치 계산
+function positionBlocks() {
+    const HOUR_PX = 60; // 1시간 = 60px
+    const START_HOUR = 8;
+
+    document.querySelectorAll('.tt-block').forEach(block => {
+        const start = block.dataset.start;
+        const end = block.dataset.end;
+
+        const [sh, sm] = start.split(':').map(Number);
+        const [eh, em] = end.split(':').map(Number);
+
+        const topMin = (sh - START_HOUR) * 60 + sm;
+        const endMin = (eh - START_HOUR) * 60 + em;
+        const height = endMin - topMin;
+
+        block.style.top = (topMin / 60) * HOUR_PX + 'px';
+        block.style.height = Math.max((height / 60) * HOUR_PX - 2, 20) + 'px';
+    });
+}
+
+positionBlocks();
 
 // 스와이프로 주간 이동
 let touchStartX = 0;
