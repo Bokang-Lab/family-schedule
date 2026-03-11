@@ -104,7 +104,7 @@ function showScheduleDetail(s) {
     openModal(s.title, html);
 }
 
-// 주간 시간표 레이아웃 - 내용 크기 측정 + 겹침 없는 스택 배치
+// 주간 시간표 레이아웃 - 시간 비례 위치 + 겹침 방지 + 내용 크기 보장
 function positionBlocks() {
     const START_HOUR = 8;
     const END_HOUR = 18;
@@ -112,7 +112,6 @@ function positionBlocks() {
     const PASSING_PX = 16;
     const EMPTY_PX = 22;
     const GAP = 3;
-    const PAD = 6;
 
     const allBlocks = document.querySelectorAll('.tt-block');
 
@@ -123,74 +122,113 @@ function positionBlocks() {
         block._naturalH = block.scrollHeight;
     });
 
-    // 2단계: 요일별로 블록을 시간순 정렬 후, 겹치지 않게 쌓았을 때 필요한 높이 계산
-    const hourNeeded = new Array(HOURS).fill(0);
+    // 2단계: 시간대별 높이 계산 (시뮬레이션)
+    // 각 요일별로 블록을 시간비례+겹침방지로 배치해보고, 필요한 높이를 구함
     const hourHasBlock = new Array(HOURS).fill(false);
-
-    document.querySelectorAll('.tt-day-col').forEach(col => {
-        const colBlocks = Array.from(col.querySelectorAll('.tt-block'));
-        // 시작 시간대별로 그룹핑
-        const hourGroups = {};
-        colBlocks.forEach(block => {
-            const [sh] = block.dataset.start.split(':').map(Number);
-            const [eh] = block.dataset.end.split(':').map(Number);
-            const si = sh - START_HOUR;
-            if (si >= 0 && si < HOURS) {
-                if (!hourGroups[si]) hourGroups[si] = [];
-                hourGroups[si].push(block._naturalH);
-            }
-            for (let h = sh; h <= eh && h < END_HOUR; h++) {
-                const idx = h - START_HOUR;
-                if (idx >= 0 && idx < HOURS) hourHasBlock[idx] = true;
-            }
-        });
-        // 각 시간대에 필요한 높이 = 블록들의 높이 합 + 간격
-        for (const [idx, heights] of Object.entries(hourGroups)) {
-            const total = heights.reduce((a, b) => a + b, 0) + (heights.length - 1) * GAP;
-            hourNeeded[idx] = Math.max(hourNeeded[idx], total);
+    allBlocks.forEach(block => {
+        const [sh] = block.dataset.start.split(':').map(Number);
+        const [eh] = block.dataset.end.split(':').map(Number);
+        for (let h = sh; h <= eh && h < END_HOUR; h++) {
+            const idx = h - START_HOUR;
+            if (idx >= 0 && idx < HOURS) hourHasBlock[idx] = true;
         }
     });
 
-    // 3단계: 시간대별 높이
-    const hourH = [];
-    for (let i = 0; i < HOURS; i++) {
-        if (hourNeeded[i] > 0) hourH.push(hourNeeded[i] + PAD);
-        else if (hourHasBlock[i]) hourH.push(PASSING_PX);
-        else hourH.push(EMPTY_PX);
+    // 초기 시간대 높이: 블록이 있는 시간은 넉넉하게, 없는 시간은 최소
+    let hourH = new Array(HOURS).fill(0).map((_, i) => hourHasBlock[i] ? 80 : EMPTY_PX);
+
+    // 2번 반복: 1회차로 대략 배치 → 필요한 높이 파악 → 2회차로 정확히 배치
+    for (let pass = 0; pass < 3; pass++) {
+        const hourY = [0];
+        for (let i = 0; i < HOURS; i++) hourY.push(hourY[i] + hourH[i]);
+
+        function timeToPx(hour, min) {
+            const idx = Math.max(0, Math.min(hour - START_HOUR, HOURS - 1));
+            return hourY[idx] + (min / 60) * hourH[idx];
+        }
+
+        // 각 요일별 시뮬레이션
+        const hourMaxBottom = new Array(HOURS).fill(0);
+        for (let i = 0; i < HOURS; i++) hourMaxBottom[i] = hourY[i];
+
+        document.querySelectorAll('.tt-day-col').forEach(col => {
+            const colBlocks = Array.from(col.querySelectorAll('.tt-block'))
+                .sort((a, b) => a.dataset.start.localeCompare(b.dataset.start));
+
+            let prevBottom = 0;
+
+            colBlocks.forEach(block => {
+                const [sh, sm] = block.dataset.start.split(':').map(Number);
+                const [eh, em] = block.dataset.end.split(':').map(Number);
+
+                // 시간 비례 위치
+                const timeTop = timeToPx(sh, sm);
+                // 이전 블록과 겹치지 않게 (아래로 밀기)
+                const actualTop = Math.max(timeTop, prevBottom);
+                // 높이 = 내용 높이 vs 시간 비례 높이 중 큰 값
+                const timeH = timeToPx(eh, em) - actualTop - GAP;
+                const height = Math.max(block._naturalH, timeH);
+
+                block._top = actualTop;
+                block._height = height;
+                prevBottom = actualTop + height + GAP;
+
+                // 이 블록이 끝나는 지점으로 해당 시간대 최대 bottom 갱신
+                const endHourIdx = Math.min(Math.floor((actualTop + height - hourY[0]) / 80), HOURS - 1);
+                for (let h = sh - START_HOUR; h <= endHourIdx && h < HOURS; h++) {
+                    if (h >= 0) hourMaxBottom[h] = Math.max(hourMaxBottom[h], actualTop + height + GAP);
+                }
+            });
+        });
+
+        // 시간대별 실제 필요 높이 재계산
+        const newHourH = [];
+        for (let i = 0; i < HOURS; i++) {
+            const needed = hourMaxBottom[i] - hourY[i];
+            if (hourHasBlock[i]) {
+                newHourH.push(Math.max(needed, PASSING_PX));
+            } else {
+                newHourH.push(EMPTY_PX);
+            }
+        }
+        hourH = newHourH;
     }
 
+    // 3단계: 최종 배치
     const hourY = [0];
     for (let i = 0; i < HOURS; i++) hourY.push(hourY[i] + hourH[i]);
 
-    // 4단계: 그리드 라인 & 라벨
+    function timeToPx(hour, min) {
+        const idx = Math.max(0, Math.min(hour - START_HOUR, HOURS - 1));
+        return hourY[idx] + (min / 60) * hourH[idx];
+    }
+
+    // 그리드 라인 & 라벨
     document.querySelectorAll('.tt-grid-line').forEach((l, i) => { l.style.top = hourY[i] + 'px'; });
     document.querySelectorAll('.tt-hour-label').forEach((l, i) => { if (i < HOURS) l.style.height = hourH[i] + 'px'; });
     document.querySelector('.tt-columns').style.height = hourY[HOURS] + 'px';
 
-    // 5단계: 블록 배치 - 요일별로 같은 시간대 블록은 겹침 없이 위에서 아래로 쌓기
+    // 블록 최종 배치
     document.querySelectorAll('.tt-day-col').forEach(col => {
         const colBlocks = Array.from(col.querySelectorAll('.tt-block'))
             .sort((a, b) => a.dataset.start.localeCompare(b.dataset.start));
 
-        // 시간대별 그룹
-        const groups = {};
-        colBlocks.forEach(block => {
-            const [sh] = block.dataset.start.split(':').map(Number);
-            const si = sh - START_HOUR;
-            if (!groups[si]) groups[si] = [];
-            groups[si].push(block);
-        });
+        let prevBottom = 0;
 
-        // 각 그룹 내에서 순서대로 쌓기
-        for (const [hourIdx, blocks] of Object.entries(groups)) {
-            let y = hourY[parseInt(hourIdx)] + GAP / 2;
-            blocks.forEach(block => {
-                block.style.top = y + 'px';
-                block.style.height = block._naturalH + 'px';
-                block.style.overflow = 'hidden';
-                y += block._naturalH + GAP;
-            });
-        }
+        colBlocks.forEach(block => {
+            const [sh, sm] = block.dataset.start.split(':').map(Number);
+            const [eh, em] = block.dataset.end.split(':').map(Number);
+
+            const timeTop = timeToPx(sh, sm);
+            const actualTop = Math.max(timeTop, prevBottom);
+            const timeH = timeToPx(eh, em) - actualTop - GAP;
+            const height = Math.max(block._naturalH, timeH);
+
+            block.style.top = actualTop + 'px';
+            block.style.height = height + 'px';
+            block.style.overflow = 'hidden';
+            prevBottom = actualTop + height + GAP;
+        });
     });
 }
 
