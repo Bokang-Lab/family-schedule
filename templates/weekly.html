@@ -108,6 +108,7 @@ function showScheduleDetail(s) {
 function positionBlocks() {
     const HOUR_PX = 60; // 1시간 = 60px
     const START_HOUR = 8;
+    const MIN_HEIGHT = 38; // 최소 높이 (짧은 일정도 읽을 수 있도록)
 
     document.querySelectorAll('.tt-block').forEach(block => {
         const start = block.dataset.start;
@@ -118,10 +119,10 @@ function positionBlocks() {
 
         const topMin = (sh - START_HOUR) * 60 + sm;
         const endMin = (eh - START_HOUR) * 60 + em;
-        const height = endMin - topMin;
+        const durationPx = ((endMin - topMin) / 60) * HOUR_PX - 2;
 
         block.style.top = (topMin / 60) * HOUR_PX + 'px';
-        block.style.height = Math.max((height / 60) * HOUR_PX - 2, 20) + 'px';
+        block.style.height = Math.max(durationPx, MIN_HEIGHT) + 'px';
     });
 }
 
