@@ -152,7 +152,7 @@ function positionBlocks() {
     // 4) 누적 Y좌표
     const sY = [0];
     for (let i = 0; i < N; i++) sY.push(sY[i] + sH[i]);
-    const TOTAL = sY[N];
+    const TOTAL = sY[N] + 18; // 하단 여백 (18시 라벨 표시용)
 
     // 5) 시간(분) → 픽셀 변환 (경계값 직접 매핑, 중간값 보간)
     function px(min) {
@@ -189,7 +189,7 @@ function positionBlocks() {
             l.style.height = h + 'px';
             l.style.fontSize = h < 15 ? '0px' : '';
         } else {
-            l.style.height = '0px';
+            l.style.height = '18px';
         }
     });
 
