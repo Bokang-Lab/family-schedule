@@ -68,7 +68,7 @@
         </div>
         <div class="child-settings-actions">
             <button onclick="showAddMemberEvent({{ member.id }}, '{{ member.name }}')" class="btn btn-sm btn-outline">일정 추가</button>
-            <button onclick='showEditMember({{ member|tojson }})' class="btn btn-sm btn-outline">수정</button>
+            <button onclick='showEditMember({{ member.to_dict()|tojson }})' class="btn btn-sm btn-outline">수정</button>
             <button onclick="deleteMember({{ member.id }}, '{{ member.name }}')" class="btn btn-sm btn-danger-outline">삭제</button>
         </div>
     </div>
