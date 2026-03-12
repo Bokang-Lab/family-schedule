@@ -52,6 +52,33 @@
     {% endif %}
 </div>
 
+<!-- 가족 구성원 관리 -->
+<div class="section">
+    <div class="section-header">
+        <h2>가족 구성원</h2>
+        <button onclick="showAddMember()" class="btn btn-sm btn-primary">+ 추가</button>
+    </div>
+
+    {% for member in members %}
+    <div class="settings-card child-settings" style="border-left: 4px solid {{ member.color }}">
+        <div class="child-settings-header">
+            <span class="color-dot-inline" style="background:{{ member.color }}; display:inline-block; width:12px; height:12px; border-radius:50%; margin-right:6px;"></span>
+            <strong>{{ member.name }}</strong>
+            {% if member.role %}<span class="school-tag">{{ member.role }}</span>{% endif %}
+        </div>
+        <div class="child-settings-actions">
+            <button onclick="showAddMemberEvent({{ member.id }}, '{{ member.name }}')" class="btn btn-sm btn-outline">일정 추가</button>
+            <button onclick='showEditMember({{ member|tojson }})' class="btn btn-sm btn-outline">수정</button>
+            <button onclick="deleteMember({{ member.id }}, '{{ member.name }}')" class="btn btn-sm btn-danger-outline">삭제</button>
+        </div>
+    </div>
+    {% endfor %}
+
+    {% if not members %}
+    <div class="no-schedule">가족 구성원을 등록해주세요.</div>
+    {% endif %}
+</div>
+
 <!-- 학기 관리 -->
 <div class="section">
     <div class="section-header">
@@ -225,6 +252,133 @@ async function saveSemester(e, semesterId) {
 async function deleteSemester(id) {
     if (!confirm('이 학기를 삭제하시겠습니까?')) return;
     const res = await fetch(`/api/semester/${id}`, {method: 'DELETE'});
+    if (res.ok) location.reload();
+}
+
+// ── 가족 구성원 관리 ──
+
+function showAddMember() {
+    const html = buildMemberForm({});
+    openModal('구성원 추가', html);
+}
+
+function showEditMember(member) {
+    const html = buildMemberForm(member);
+    openModal('구성원 수정', html);
+}
+
+function buildMemberForm(m) {
+    const isEdit = !!m.id;
+    return `
+    <form onsubmit="saveMember(event, ${m.id || 'null'})">
+        <div class="form-group">
+            <label>이름</label>
+            <input type="text" id="fm-name" value="${m.name || ''}" placeholder="예: 홍길동" required>
+        </div>
+        <div class="form-group">
+            <label>역할 <span class="optional">(선택)</span></label>
+            <input type="text" id="fm-role" value="${m.role || ''}" placeholder="예: 아빠, 엄마, 할머니">
+        </div>
+        <div class="form-group">
+            <label>색상</label>
+            <div class="color-picker">
+                ${COLORS.map(color => `
+                    <button type="button" class="color-dot ${m.color === color ? 'selected' : ''}"
+                            style="background:${color}" onclick="selectMemberColor(this, '${color}')"></button>
+                `).join('')}
+            </div>
+            <input type="hidden" id="fm-color" value="${m.color || '#4A90D9'}">
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">${isEdit ? '수정' : '추가'}</button>
+    </form>`;
+}
+
+function selectMemberColor(el, color) {
+    el.closest('.color-picker').querySelectorAll('.color-dot').forEach(d => d.classList.remove('selected'));
+    el.classList.add('selected');
+    document.getElementById('fm-color').value = color;
+}
+
+async function saveMember(e, memberId) {
+    e.preventDefault();
+    const data = {
+        name: document.getElementById('fm-name').value,
+        role: document.getElementById('fm-role').value,
+        color: document.getElementById('fm-color').value,
+    };
+    const url = memberId ? `/api/member/${memberId}` : '/api/member';
+    const method = memberId ? 'PUT' : 'POST';
+    const res = await fetch(url, {method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)});
+    if (res.ok) { closeModal(); location.reload(); }
+}
+
+async function deleteMember(id, name) {
+    if (!confirm(`${name}의 모든 일정이 삭제됩니다. 정말 삭제하시겠습니까?`)) return;
+    const res = await fetch(`/api/member/${id}`, {method: 'DELETE'});
+    if (res.ok) location.reload();
+}
+
+// ── 구성원 일정 관리 ──
+
+function showAddMemberEvent(memberId, memberName) {
+    const html = buildMemberEventForm({member_id: memberId}, memberName);
+    openModal(`${memberName} 일정 추가`, html);
+}
+
+function showEditMemberEvent(evt, memberName) {
+    const html = buildMemberEventForm(evt, memberName);
+    openModal(`${memberName} 일정 수정`, html);
+}
+
+function buildMemberEventForm(evt, memberName) {
+    const isEdit = !!evt.id;
+    return `
+    <form onsubmit="saveMemberEvent(event, ${evt.id || 'null'}, ${evt.member_id})">
+        <div class="form-group">
+            <label>날짜</label>
+            <input type="date" id="fme-date" value="${evt.date || ''}" required>
+        </div>
+        <div class="form-group">
+            <label>제목</label>
+            <input type="text" id="fme-title" value="${evt.title || ''}" placeholder="예: 병원 예약" required>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>시작시간 <span class="optional">(선택)</span></label>
+                <input type="time" id="fme-start" value="${evt.start_time || ''}">
+            </div>
+            <div class="form-group">
+                <label>종료시간 <span class="optional">(선택)</span></label>
+                <input type="time" id="fme-end" value="${evt.end_time || ''}">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>설명 <span class="optional">(선택)</span></label>
+            <textarea id="fme-desc" rows="2" placeholder="메모">${evt.description || ''}</textarea>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">${isEdit ? '수정' : '추가'}</button>
+    </form>`;
+}
+
+async function saveMemberEvent(e, eventId, memberId) {
+    e.preventDefault();
+    const data = {
+        member_id: memberId,
+        date: document.getElementById('fme-date').value,
+        title: document.getElementById('fme-title').value,
+        start_time: document.getElementById('fme-start').value || null,
+        end_time: document.getElementById('fme-end').value || null,
+        description: document.getElementById('fme-desc').value || null,
+    };
+    const url = eventId ? `/api/member-event/${eventId}` : '/api/member-event';
+    const method = eventId ? 'PUT' : 'POST';
+    const res = await fetch(url, {method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)});
+    if (res.ok) { closeModal(); location.reload(); }
+}
+
+async function deleteMemberEvent(id) {
+    if (!confirm('이 일정을 삭제하시겠습니까?')) return;
+    const res = await fetch(`/api/member-event/${id}`, {method: 'DELETE'});
     if (res.ok) location.reload();
 }
 </script>

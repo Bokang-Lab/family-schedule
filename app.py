@@ -1,8 +1,9 @@
 import os
 import secrets
+import calendar
 from datetime import datetime, date, timedelta
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
-from models import db, Family, Child, Semester, Schedule, SpecialEvent
+from models import db, Family, Child, Semester, Schedule, SpecialEvent, FamilyMember, MemberEvent
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', secrets.token_hex(16))
@@ -135,6 +136,120 @@ def weekly():
                            week_title=week_title)
 
 
+@app.route('/monthly')
+@login_required
+def monthly():
+    """가족 월간 캘린더"""
+    family = get_family()
+    children = Child.query.filter_by(family_id=family.id).order_by(Child.sort_order).all()
+    members = FamilyMember.query.filter_by(family_id=family.id).order_by(FamilyMember.sort_order).all()
+
+    today = date.today()
+    year = request.args.get('year', today.year, type=int)
+    month = request.args.get('month', today.month, type=int)
+
+    # 월 범위 조정
+    if month < 1:
+        month = 12
+        year -= 1
+    elif month > 12:
+        month = 1
+        year += 1
+
+    month_title = f'{year}년 {month}월'
+
+    # 달력 데이터 생성 (일요일 시작)
+    cal = calendar.Calendar(firstweekday=6)  # 일요일 시작
+    month_days = cal.monthdatescalendar(year, month)
+
+    # 이번 달의 모든 날짜 범위
+    first_date = month_days[0][0]
+    last_date = month_days[-1][6]
+
+    # 자녀 특별 일정 조회
+    child_ids = [c.id for c in children]
+    special_events = []
+    if child_ids:
+        special_events = SpecialEvent.query.filter(
+            SpecialEvent.child_id.in_(child_ids),
+            SpecialEvent.date >= first_date,
+            SpecialEvent.date <= last_date
+        ).all()
+
+    # 가족 구성원 일정 조회
+    member_ids = [m.id for m in members]
+    member_events = []
+    if member_ids:
+        member_events = MemberEvent.query.filter(
+            MemberEvent.member_id.in_(member_ids),
+            MemberEvent.date >= first_date,
+            MemberEvent.date <= last_date
+        ).all()
+
+    # 날짜별 이벤트 맵 구성
+    events_by_date = {}
+    for ev in special_events:
+        d = ev.date.isoformat()
+        if d not in events_by_date:
+            events_by_date[d] = []
+        child = next((c for c in children if c.id == ev.child_id), None)
+        events_by_date[d].append({
+            'id': ev.id,
+            'title': ev.title,
+            'start_time': ev.start_time or '',
+            'end_time': ev.end_time or '',
+            'person_name': child.name if child else '',
+            'person_color': child.color if child else '#999',
+            'type': 'child_special',
+            'description': ev.description or '',
+            'cancel_normal': ev.cancel_normal,
+        })
+
+    for ev in member_events:
+        d = ev.date.isoformat()
+        if d not in events_by_date:
+            events_by_date[d] = []
+        events_by_date[d].append({
+            'id': ev.id,
+            'title': ev.title,
+            'start_time': ev.start_time or '',
+            'end_time': ev.end_time or '',
+            'person_name': ev.member.name if ev.member else '',
+            'person_color': ev.member.color if ev.member else '#999',
+            'type': 'member_event',
+            'description': ev.description or '',
+            'member_id': ev.member_id,
+        })
+
+    # 캘린더 데이터 구성
+    calendar_data = []
+    for week in month_days:
+        week_data = []
+        for d in week:
+            d_str = d.isoformat()
+            day_events = events_by_date.get(d_str, [])
+            # 시간순 정렬
+            day_events.sort(key=lambda e: e.get('start_time', '') or '99:99')
+            week_data.append({
+                'date': d_str,
+                'day': d.day,
+                'is_current_month': d.month == month,
+                'is_today': d == today,
+                'dow': (d.weekday() + 1) % 7,  # 0=일, 1=월, ..., 6=토
+                'events': day_events,
+            })
+        calendar_data.append(week_data)
+
+    return render_template('monthly.html',
+                           family=family,
+                           children=children,
+                           members=members,
+                           year=year,
+                           month=month,
+                           month_title=month_title,
+                           calendar_data=calendar_data)
+
+
 @app.route('/manage')
 @login_required
 def manage():
@@ -174,10 +289,12 @@ def settings():
     family = get_family()
     children = Child.query.filter_by(family_id=family.id).order_by(Child.sort_order).all()
     semesters = Semester.query.filter_by(family_id=family.id).order_by(Semester.start_date.desc()).all()
+    members = FamilyMember.query.filter_by(family_id=family.id).order_by(FamilyMember.sort_order).all()
     return render_template('settings.html',
                            family=family,
                            children=children,
-                           semesters=semesters)
+                           semesters=semesters,
+                           members=members)
 
 
 @app.route('/login')
@@ -400,6 +517,91 @@ def api_update_semester(semester_id):
 def api_delete_semester(semester_id):
     semester = Semester.query.get_or_404(semester_id)
     db.session.delete(semester)
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+# ─── 가족 구성원 API ───
+
+@app.route('/api/member', methods=['POST'])
+@login_required
+def api_add_member():
+    family = get_family()
+    data = request.get_json()
+    member = FamilyMember(
+        family_id=family.id,
+        name=data['name'],
+        role=data.get('role', ''),
+        color=data.get('color', '#9C27B0'),
+        sort_order=data.get('sort_order', 0),
+    )
+    db.session.add(member)
+    db.session.commit()
+    return jsonify({'success': True, 'member': member.to_dict()})
+
+
+@app.route('/api/member/<int:member_id>', methods=['PUT'])
+@login_required
+def api_update_member(member_id):
+    member = FamilyMember.query.get_or_404(member_id)
+    data = request.get_json()
+    member.name = data.get('name', member.name)
+    member.role = data.get('role', member.role)
+    member.color = data.get('color', member.color)
+    member.sort_order = data.get('sort_order', member.sort_order)
+    db.session.commit()
+    return jsonify({'success': True, 'member': member.to_dict()})
+
+
+@app.route('/api/member/<int:member_id>', methods=['DELETE'])
+@login_required
+def api_delete_member(member_id):
+    member = FamilyMember.query.get_or_404(member_id)
+    db.session.delete(member)
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+# ─── 구성원 일정 API ───
+
+@app.route('/api/member-event', methods=['POST'])
+@login_required
+def api_add_member_event():
+    data = request.get_json()
+    event = MemberEvent(
+        member_id=data['member_id'],
+        date=date.fromisoformat(data['date']),
+        title=data['title'],
+        description=data.get('description', ''),
+        start_time=data.get('start_time', ''),
+        end_time=data.get('end_time', ''),
+    )
+    db.session.add(event)
+    db.session.commit()
+    return jsonify({'success': True, 'event': event.to_dict()})
+
+
+@app.route('/api/member-event/<int:event_id>', methods=['PUT'])
+@login_required
+def api_update_member_event(event_id):
+    event = MemberEvent.query.get_or_404(event_id)
+    data = request.get_json()
+    for field in ['title', 'description', 'start_time', 'end_time']:
+        if field in data:
+            setattr(event, field, data[field])
+    if 'date' in data:
+        event.date = date.fromisoformat(data['date'])
+    if 'member_id' in data:
+        event.member_id = data['member_id']
+    db.session.commit()
+    return jsonify({'success': True, 'event': event.to_dict()})
+
+
+@app.route('/api/member-event/<int:event_id>', methods=['DELETE'])
+@login_required
+def api_delete_member_event(event_id):
+    event = MemberEvent.query.get_or_404(event_id)
+    db.session.delete(event)
     db.session.commit()
     return jsonify({'success': True})
 

@@ -11,6 +11,7 @@ class Family(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     children = db.relationship('Child', backref='family', lazy=True, cascade='all, delete-orphan')
     semesters = db.relationship('Semester', backref='family', lazy=True, cascade='all, delete-orphan')
+    members = db.relationship('FamilyMember', backref='family', lazy=True, cascade='all, delete-orphan')
 
 
 class Child(db.Model):
@@ -113,4 +114,46 @@ class SpecialEvent(db.Model):
             'start_time': self.start_time,
             'end_time': self.end_time,
             'cancel_normal': self.cancel_normal,
+        }
+
+
+class FamilyMember(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    family_id = db.Column(db.Integer, db.ForeignKey('family.id'), nullable=False)
+    name = db.Column(db.String(30), nullable=False)
+    role = db.Column(db.String(20), default='')  # 아빠, 엄마, 할머니 등
+    color = db.Column(db.String(7), default='#9C27B0')
+    sort_order = db.Column(db.Integer, default=0)
+    events = db.relationship('MemberEvent', backref='member', lazy=True, cascade='all, delete-orphan')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'role': self.role,
+            'color': self.color,
+            'sort_order': self.sort_order,
+        }
+
+
+class MemberEvent(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    member_id = db.Column(db.Integer, db.ForeignKey('family_member.id'), nullable=False)
+    date = db.Column(db.Date, nullable=False)
+    title = db.Column(db.String(50), nullable=False)
+    description = db.Column(db.String(200), default='')
+    start_time = db.Column(db.String(5), default='')
+    end_time = db.Column(db.String(5), default='')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'member_id': self.member_id,
+            'member_name': self.member.name if self.member else '',
+            'member_color': self.member.color if self.member else '#999',
+            'date': self.date.isoformat(),
+            'title': self.title,
+            'description': self.description,
+            'start_time': self.start_time,
+            'end_time': self.end_time,
         }

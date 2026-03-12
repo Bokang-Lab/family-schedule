@@ -1,0 +1,331 @@
+{% extends "base.html" %}
+{% block title %}월간 캘린더 - 우리가족 시간표{% endblock %}
+{% block header %}가족 월간 캘린더{% endblock %}
+
+{% block content %}
+<!-- 구성원 범례 -->
+<div class="person-legend">
+    {% for child in children %}
+    <span class="legend-item">
+        <span class="legend-dot" style="background: {{ child.color }};"></span>
+        {{ child.name }}
+    </span>
+    {% endfor %}
+    {% for member in members %}
+    <span class="legend-item">
+        <span class="legend-dot" style="background: {{ member.color }};"></span>
+        {{ member.name }}
+    </span>
+    {% endfor %}
+</div>
+
+<!-- 월 네비게이션 -->
+<div class="month-nav">
+    <a href="/monthly?year={{ year }}&month={{ month - 1 }}" class="month-nav-btn">&lt; 이전</a>
+    <div class="month-nav-center">
+        <div class="month-title">{{ month_title }}</div>
+        {% if not is_current_month_view is defined or not is_current_month_view %}
+        <a href="/monthly" class="month-today-btn">오늘</a>
+        {% endif %}
+    </div>
+    <a href="/monthly?year={{ year }}&month={{ month + 1 }}" class="month-nav-btn">다음 &gt;</a>
+</div>
+
+<!-- 요일 헤더 -->
+<div class="calendar-grid">
+    <div class="calendar-header sunday">일</div>
+    <div class="calendar-header">월</div>
+    <div class="calendar-header">화</div>
+    <div class="calendar-header">수</div>
+    <div class="calendar-header">목</div>
+    <div class="calendar-header">금</div>
+    <div class="calendar-header saturday">토</div>
+
+    <!-- 캘린더 셀 -->
+    {% for week in calendar_data %}
+        {% for day in week %}
+        <div class="calendar-cell {% if not day.is_current_month %}cal-cell-other{% endif %} {% if day.is_today %}cal-cell-today{% endif %}"
+             onclick="showDayDetail('{{ day.date }}')"
+             data-date="{{ day.date }}">
+            <div class="cal-date {% if loop.index0 == 0 %}sunday{% endif %} {% if loop.index0 == 6 %}saturday{% endif %}">
+                {{ day.day }}
+            </div>
+            <div class="cal-events">
+                {% for event in day.events[:3] %}
+                <div class="cal-event" style="background: {{ event.person_color }}; color: white;">
+                    {{ event.title[:6] }}{% if event.title|length > 6 %}..{% endif %}
+                </div>
+                {% endfor %}
+                {% if day.events|length > 3 %}
+                <div class="cal-event-more">+{{ day.events|length - 3 }}</div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    {% endfor %}
+</div>
+
+<!-- FAB 버튼 -->
+<button class="fab" onclick="showAddEvent()" title="일정 추가">+</button>
+
+<!-- 이벤트 데이터 (JS용) -->
+<script>
+const calendarEvents = {};
+{% for week in calendar_data %}
+    {% for day in week %}
+        {% if day.events %}
+calendarEvents['{{ day.date }}'] = {{ day.events|tojson }};
+        {% endif %}
+    {% endfor %}
+{% endfor %}
+
+const familyMembers = [
+    {% for child in children %}
+    { id: 'child_{{ child.id }}', name: '{{ child.name }}', color: '{{ child.color }}', type: 'child' },
+    {% endfor %}
+    {% for member in members %}
+    { id: {{ member.id }}, name: '{{ member.name }}', color: '{{ member.color }}', type: 'member' },
+    {% endfor %}
+];
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showDayDetail(dateStr) {
+    const events = calendarEvents[dateStr] || [];
+    const d = new Date(dateStr);
+    const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+    const dateLabel = `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 (${dayNames[d.getDay()]})`;
+
+    let html = `<div style="margin-bottom:12px;color:var(--text-light);font-size:0.9rem;">${dateLabel}</div>`;
+
+    if (events.length === 0) {
+        html += '<div class="empty-state" style="padding:20px;"><p>등록된 일정이 없습니다.</p></div>';
+    } else {
+        html += '<div class="day-detail-list">';
+        events.forEach(ev => {
+            const timeStr = ev.start_time ? `${ev.start_time}${ev.end_time ? ' ~ ' + ev.end_time : ''}` : '종일';
+            html += `
+                <div class="day-detail-item" onclick='showEventActions(${JSON.stringify(ev)})'>
+                    <span class="legend-dot" style="background:${ev.person_color};"></span>
+                    <div class="day-detail-info">
+                        <div class="day-detail-title">${ev.title}</div>
+                        <div class="day-detail-meta">
+                            <span class="day-detail-person">${ev.person_name}</span>
+                            <span class="day-detail-time">${timeStr}</span>
+                        </div>
+                        ${ev.description ? `<div class="day-detail-desc">${ev.description}</div>` : ''}
+                    </div>
+                </div>
+            `;
+        });
+        html += '</div>';
+    }
+
+    html += `<button class="btn btn-primary btn-full" style="margin-top:16px;" onclick="closeModal(); showAddEvent('${dateStr}');">이 날 일정 추가</button>`;
+
+    openModal('일정 상세', html);
+}
+
+function showEventActions(ev) {
+    let html = `
+        <div class="detail-row"><strong>제목</strong> ${ev.title}</div>
+        <div class="detail-row"><strong>담당</strong> <span class="legend-dot" style="background:${ev.person_color};display:inline-block;vertical-align:middle;"></span> ${ev.person_name}</div>
+    `;
+    if (ev.start_time) {
+        html += `<div class="detail-row"><strong>시간</strong> ${ev.start_time}${ev.end_time ? ' ~ ' + ev.end_time : ''}</div>`;
+    }
+    if (ev.description) {
+        html += `<div class="detail-row"><strong>내용</strong> ${ev.description}</div>`;
+    }
+    html += `<div class="detail-row"><strong>유형</strong> ${ev.type === 'special' ? '특별일정' : '구성원 일정'}</div>`;
+
+    if (ev.type === 'member') {
+        html += `
+            <div style="display:flex;gap:8px;margin-top:16px;">
+                <button class="btn btn-outline" style="flex:1;" onclick="editEvent(${JSON.stringify(ev).replace(/"/g, '&quot;')})">수정</button>
+                <button class="btn btn-danger-outline" style="flex:1;" onclick="deleteEvent(${ev.id})">삭제</button>
+            </div>
+        `;
+    }
+
+    openModal(ev.title, html);
+}
+
+function showAddEvent(dateStr) {
+    const today = dateStr || new Date().toISOString().split('T')[0];
+
+    let memberOptions = '';
+    familyMembers.forEach(m => {
+        if (m.type === 'member') {
+            memberOptions += `<option value="${m.id}">${m.name}</option>`;
+        }
+    });
+
+    const html = `
+        <form onsubmit="event.preventDefault(); submitEvent();">
+            <div class="form-group">
+                <label>담당자</label>
+                <select id="ev-member" required>${memberOptions}</select>
+            </div>
+            <div class="form-group">
+                <label>날짜</label>
+                <input type="date" id="ev-date" value="${today}" required>
+            </div>
+            <div class="form-group">
+                <label>제목</label>
+                <input type="text" id="ev-title" placeholder="일정 제목" required>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>시작 시간 <span class="optional">(선택)</span></label>
+                    <input type="time" id="ev-start">
+                </div>
+                <div class="form-group">
+                    <label>종료 시간 <span class="optional">(선택)</span></label>
+                    <input type="time" id="ev-end">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>설명 <span class="optional">(선택)</span></label>
+                <input type="text" id="ev-desc" placeholder="간단한 설명">
+            </div>
+            <button type="submit" class="btn btn-primary btn-full">저장</button>
+        </form>
+    `;
+
+    openModal('일정 추가', html);
+}
+
+function submitEvent() {
+    const data = {
+        member_id: parseInt(document.getElementById('ev-member').value),
+        date: document.getElementById('ev-date').value,
+        title: document.getElementById('ev-title').value,
+        description: document.getElementById('ev-desc').value || '',
+        start_time: document.getElementById('ev-start').value || '',
+        end_time: document.getElementById('ev-end').value || '',
+    };
+
+    fetch('/api/member-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.success) {
+            showToast('일정이 추가되었습니다.');
+            closeModal();
+            setTimeout(() => location.reload(), 500);
+        } else {
+            showToast('저장 실패', true);
+        }
+    })
+    .catch(() => showToast('오류가 발생했습니다.', true));
+}
+
+function editEvent(ev) {
+    let memberOptions = '';
+    familyMembers.forEach(m => {
+        if (m.type === 'member') {
+            const sel = m.id === ev.member_id ? 'selected' : '';
+            memberOptions += `<option value="${m.id}" ${sel}>${m.name}</option>`;
+        }
+    });
+
+    const html = `
+        <form onsubmit="event.preventDefault(); updateEvent(${ev.id});">
+            <div class="form-group">
+                <label>담당자</label>
+                <select id="ev-member">${memberOptions}</select>
+            </div>
+            <div class="form-group">
+                <label>날짜</label>
+                <input type="date" id="ev-date" value="${ev.date || ''}" required>
+            </div>
+            <div class="form-group">
+                <label>제목</label>
+                <input type="text" id="ev-title" value="${ev.title || ''}" required>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>시작 시간 <span class="optional">(선택)</span></label>
+                    <input type="time" id="ev-start" value="${ev.start_time || ''}">
+                </div>
+                <div class="form-group">
+                    <label>종료 시간 <span class="optional">(선택)</span></label>
+                    <input type="time" id="ev-end" value="${ev.end_time || ''}">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>설명 <span class="optional">(선택)</span></label>
+                <input type="text" id="ev-desc" value="${ev.description || ''}">
+            </div>
+            <button type="submit" class="btn btn-primary btn-full">수정</button>
+        </form>
+    `;
+
+    openModal('일정 수정', html);
+}
+
+function updateEvent(eventId) {
+    const data = {
+        member_id: parseInt(document.getElementById('ev-member').value),
+        date: document.getElementById('ev-date').value,
+        title: document.getElementById('ev-title').value,
+        description: document.getElementById('ev-desc').value || '',
+        start_time: document.getElementById('ev-start').value || '',
+        end_time: document.getElementById('ev-end').value || '',
+    };
+
+    fetch(`/api/member-event/${eventId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.success) {
+            showToast('일정이 수정되었습니다.');
+            closeModal();
+            setTimeout(() => location.reload(), 500);
+        } else {
+            showToast('수정 실패', true);
+        }
+    })
+    .catch(() => showToast('오류가 발생했습니다.', true));
+}
+
+function deleteEvent(eventId) {
+    if (!confirm('이 일정을 삭제하시겠습니까?')) return;
+
+    fetch(`/api/member-event/${eventId}`, {
+        method: 'DELETE',
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.success) {
+            showToast('일정이 삭제되었습니다.');
+            closeModal();
+            setTimeout(() => location.reload(), 500);
+        } else {
+            showToast('삭제 실패', true);
+        }
+    })
+    .catch(() => showToast('오류가 발생했습니다.', true));
+}
+
+// 스와이프로 월 이동
+let touchStartX = 0;
+document.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; });
+document.addEventListener('touchend', e => {
+    const diff = e.changedTouches[0].clientX - touchStartX;
+    if (Math.abs(diff) > 80) {
+        const m = diff > 0 ? {{ month - 1 }} : {{ month + 1 }};
+        location.href = `/monthly?year={{ year }}&month=${m}`;
+    }
+});
+</script>
+{% endblock %}
