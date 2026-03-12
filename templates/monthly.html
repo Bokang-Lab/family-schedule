@@ -174,6 +174,26 @@ function onPersonChange() {
     document.getElementById('cancel-normal-group').style.display = isChild ? 'block' : 'none';
 }
 
+function toggleRecurring() {
+    const on = document.getElementById('ev-recurring').checked;
+    document.getElementById('recurring-options').style.display = on ? 'block' : 'none';
+    document.getElementById('ev-date').closest('.form-group').style.display = on ? 'none' : 'block';
+    if (on) {
+        // 날짜에서 일(day) 자동 추출
+        const d = document.getElementById('ev-date').value;
+        if (d) document.getElementById('ev-rec-day').value = parseInt(d.split('-')[2]);
+        // 시작/종료월 기본값
+        const now = new Date();
+        const ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+        if (!document.getElementById('ev-rec-start').value) document.getElementById('ev-rec-start').value = ym;
+        if (!document.getElementById('ev-rec-end').value) {
+            const ey = now.getMonth() === 11 ? now.getFullYear()+1 : now.getFullYear();
+            const em = now.getMonth() === 11 ? 1 : now.getMonth()+2;
+            document.getElementById('ev-rec-end').value = `${ey}-${String(em).padStart(2,'0')}`;
+        }
+    }
+}
+
 function showAddEvent(dateStr) {
     const today = dateStr || new Date().toISOString().split('T')[0];
 
@@ -211,6 +231,30 @@ function showAddEvent(dateStr) {
                     이 날 정규 일정 취소
                 </label>
             </div>
+            <div class="form-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="ev-recurring" onchange="toggleRecurring()">
+                    매월 반복
+                </label>
+            </div>
+            <div id="recurring-options" style="display:none; background:#f8f9fa; border-radius:8px; padding:12px; margin-bottom:12px;">
+                <div class="form-group" style="margin-bottom:8px;">
+                    <label>매월 반복일</label>
+                    <select id="ev-rec-day">
+                        ${Array.from({length:31}, (_,i) => `<option value="${i+1}">${i+1}일</option>`).join('')}
+                    </select>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>시작월</label>
+                        <input type="month" id="ev-rec-start" required>
+                    </div>
+                    <div class="form-group">
+                        <label>종료월</label>
+                        <input type="month" id="ev-rec-end" required>
+                    </div>
+                </div>
+            </div>
             <button type="submit" class="btn btn-primary btn-full">저장</button>
         </form>
     `;
@@ -229,6 +273,37 @@ function getPersonData() {
 
 function submitEvent() {
     const person = getPersonData();
+    const isRecurring = document.getElementById('ev-recurring').checked;
+
+    if (isRecurring) {
+        const data = {
+            ...person,
+            day: parseInt(document.getElementById('ev-rec-day').value),
+            start_month: document.getElementById('ev-rec-start').value,
+            end_month: document.getElementById('ev-rec-end').value,
+            title: document.getElementById('ev-title').value,
+            description: document.getElementById('ev-desc').value || '',
+            start_time: document.getElementById('ev-start').value || '',
+            end_time: document.getElementById('ev-end').value || '',
+            cancel_normal: document.getElementById('ev-cancel') ? document.getElementById('ev-cancel').checked : false,
+        };
+        fetch('/api/member-event/recurring', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        })
+        .then(r => r.json())
+        .then(res => {
+            if (res.success) {
+                showToast(`${res.created}개월 일정이 등록되었습니다.`);
+                closeModal();
+                setTimeout(() => location.reload(), 500);
+            } else { showToast('저장 실패', true); }
+        })
+        .catch(() => showToast('오류가 발생했습니다.', true));
+        return;
+    }
+
     const data = {
         ...person,
         date: document.getElementById('ev-date').value,

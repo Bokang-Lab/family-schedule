@@ -546,6 +546,46 @@ def api_add_member_event():
     return jsonify({'success': True, 'event': event.to_dict()})
 
 
+@app.route('/api/member-event/recurring', methods=['POST'])
+@login_required
+def api_add_recurring_event():
+    """매월 반복 일정 일괄 생성"""
+    data = request.get_json()
+    day_of_month = data['day']
+    start_ym = data['start_month']  # "2026-03"
+    end_ym = data['end_month']      # "2026-12"
+    sy, sm = map(int, start_ym.split('-'))
+    ey, em = map(int, end_ym.split('-'))
+
+    created = 0
+    y, m = sy, sm
+    while (y, m) <= (ey, em):
+        # 해당 월의 마지막 날 체크
+        import calendar as cal_mod
+        last_day = cal_mod.monthrange(y, m)[1]
+        d = min(day_of_month, last_day)
+        event = MemberEvent(
+            member_id=data.get('member_id'),
+            child_id=data.get('child_id'),
+            date=date(y, m, d),
+            title=data['title'],
+            description=data.get('description', ''),
+            start_time=data.get('start_time', ''),
+            end_time=data.get('end_time', ''),
+            cancel_normal=data.get('cancel_normal', False),
+        )
+        db.session.add(event)
+        created += 1
+        # 다음 달
+        m += 1
+        if m > 12:
+            m = 1
+            y += 1
+
+    db.session.commit()
+    return jsonify({'success': True, 'created': created})
+
+
 @app.route('/api/member-event/<int:event_id>', methods=['PUT'])
 @login_required
 def api_update_member_event(event_id):
