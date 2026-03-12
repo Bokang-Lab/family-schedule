@@ -45,6 +45,30 @@
             {% endfor %}
         </div>
 
+        <!-- 특별 일정 배너 -->
+        {% set has_special = [] %}
+        {% for i in range(7) %}
+            {% if special_events_data.get(i) %}{% if has_special.append(1) %}{% endif %}{% endif %}
+        {% endfor %}
+        {% if has_special %}
+        <div class="tt-special-row">
+            <div class="tt-special-label">&#9733;</div>
+            {% for i in range(7) %}
+            <div class="tt-special-cell">
+                {% if special_events_data.get(i) %}
+                    {% for ev in special_events_data[i] %}
+                    <div class="tt-special-badge {% if ev.cancel_normal %}cancel{% endif %}"
+                         onclick='showSpecialDetail({{ ev|tojson }})'>
+                        <div class="tt-special-title">{{ ev.title }}</div>
+                        {% if ev.start_time %}<div class="tt-special-time">{{ ev.start_time }}{% if ev.end_time %}-{{ ev.end_time }}{% endif %}</div>{% endif %}
+                    </div>
+                    {% endfor %}
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
         <!-- 본문: 시간축 + 일정 -->
         <div class="tt-body">
             <!-- 시간 라벨 (좌측) -->
@@ -63,13 +87,6 @@
 
                 {% for i in range(7) %}
                 <div class="tt-day-col {% if week_header[i].is_today %}today-col{% endif %} {% if i == 0 %}sunday-col{% endif %} {% if i == 6 %}saturday-col{% endif %}">
-                    <!-- 특별 일정 -->
-                    {% if special_events_data.get(i) %}
-                        {% for ev in special_events_data[i] %}
-                        <div class="tt-special">&#9733;</div>
-                        {% endfor %}
-                    {% endif %}
-
                     <!-- 반복 일정 블록 -->
                     {% if weekly_data.get(i) %}
                         {% for s in weekly_data[i] %}
@@ -93,6 +110,15 @@
 
 {% block scripts %}
 <script>
+function showSpecialDetail(ev) {
+    let html = '';
+    if (ev.start_time) html += `<div class="detail-row"><strong>시간</strong> ${ev.start_time}${ev.end_time ? ' ~ ' + ev.end_time : ''}</div>`;
+    if (ev.description) html += `<div class="detail-row"><strong>내용</strong> ${ev.description}</div>`;
+    if (ev.cancel_normal) html += `<div class="detail-row"><strong>참고</strong> <span style="color:#E74C3C;font-weight:600">정규 일정 취소</span></div>`;
+    html += `<div class="detail-row"><strong>날짜</strong> ${ev.date}</div>`;
+    openModal('⭐ ' + ev.title, html);
+}
+
 function showScheduleDetail(s) {
     let html = `
         <div class="detail-row"><strong>시간</strong> ${s.start_time} ~ ${s.end_time}</div>
