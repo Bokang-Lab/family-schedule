@@ -958,6 +958,99 @@ input:focus, select:focus {
     .cal-event { font-size: 0.65rem; padding: 2px 4px; }
 }
 
+/* ─── 준비물 (관리 페이지) ─── */
+.prep-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 6px;
+    align-items: center;
+}
+.prep-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    background: #FFF3E0;
+    color: #E65100;
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-weight: 500;
+}
+.prep-del {
+    background: none;
+    border: none;
+    color: #E65100;
+    font-size: 0.85rem;
+    cursor: pointer;
+    padding: 0 2px;
+    line-height: 1;
+    opacity: 0.6;
+}
+.prep-del:hover { opacity: 1; }
+.prep-add-btn {
+    background: none;
+    border: 1px dashed #ccc;
+    color: var(--text-light);
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 12px;
+    cursor: pointer;
+}
+.prep-add-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+/* ─── 준비물 (오늘 페이지) ─── */
+.prep-section {
+    margin-top: 16px;
+}
+.prep-section-header {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text);
+    padding: 8px 0;
+}
+.prep-card {
+    background: white;
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.prep-card-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+    font-size: 0.85rem;
+}
+.prep-schedule-name {
+    color: var(--text-light);
+    font-size: 0.8rem;
+}
+.prep-checklist {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.prep-check-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    padding: 4px 0;
+}
+.prep-check-item input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: #4CAF50;
+    flex-shrink: 0;
+}
+.prep-check-item.checked span {
+    text-decoration: line-through;
+    color: var(--text-light);
+}
+
 /* ─── 반응형 ─── */
 @media (min-width: 768px) {
     .app-content { padding: 24px; padding-bottom: 80px; }

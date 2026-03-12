@@ -66,6 +66,7 @@ class Schedule(db.Model):
     memo = db.Column(db.String(200), default='')
     pickup_person = db.Column(db.String(20), default='')
     is_active = db.Column(db.Boolean, default=True)
+    prep_items = db.relationship('PrepItem', backref='schedule', lazy=True, cascade='all, delete-orphan')
 
     CATEGORY_LABELS = {
         'school': '정규수업',
@@ -89,6 +90,7 @@ class Schedule(db.Model):
             'memo': self.memo,
             'pickup_person': self.pickup_person,
             'is_active': self.is_active,
+            'prep_items': [{'id': p.id, 'name': p.name} for p in self.prep_items],
         }
 
 
@@ -169,3 +171,9 @@ class MemberEvent(db.Model):
             'end_time': self.end_time or '',
             'cancel_normal': self.cancel_normal or False,
         }
+
+
+class PrepItem(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    schedule_id = db.Column(db.Integer, db.ForeignKey('schedule.id'), nullable=False)
+    name = db.Column(db.String(50), nullable=False)

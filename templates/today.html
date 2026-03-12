@@ -57,11 +57,56 @@
         {% endif %}
     </div>
     {% endfor %}
+
+    {% if tomorrow_prep %}
+    <div class="prep-section">
+        <div class="prep-section-header">&#127890; 내일({{ tomorrow_dow_name }}) 준비물</div>
+        {% for p in tomorrow_prep %}
+        <div class="prep-card" style="border-left: 3px solid {{ p.child_color }}">
+            <div class="prep-card-header">
+                <span class="child-dot" style="background: {{ p.child_color }}"></span>
+                <strong>{{ p.child_name }}</strong>
+                <span class="prep-schedule-name">{{ p.schedule_title }} ({{ p.start_time }})</span>
+            </div>
+            <div class="prep-checklist">
+                {% for item in p.items %}
+                <label class="prep-check-item">
+                    <input type="checkbox" onchange="togglePrepCheck(this, '{{ item }}')">
+                    <span>{{ item }}</span>
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
 {% endif %}
 {% endblock %}
 
 {% block scripts %}
 <script>
+    // 준비물 체크 상태 (localStorage, 날짜별)
+    const PREP_KEY = 'prep_' + new Date().toISOString().split('T')[0];
+    function getPrepState() {
+        try { return JSON.parse(localStorage.getItem(PREP_KEY)) || {}; } catch { return {}; }
+    }
+    function togglePrepCheck(cb, name) {
+        const state = getPrepState();
+        state[name] = cb.checked;
+        localStorage.setItem(PREP_KEY, JSON.stringify(state));
+        cb.closest('.prep-check-item').classList.toggle('checked', cb.checked);
+    }
+    // 페이지 로드 시 체크 상태 복원
+    document.querySelectorAll('.prep-check-item').forEach(el => {
+        const name = el.querySelector('span').textContent.trim();
+        const state = getPrepState();
+        if (state[name]) {
+            el.querySelector('input').checked = true;
+            el.classList.add('checked');
+        }
+    });
+
     // 1분마다 현재 시간 업데이트하여 하이라이트 갱신
     setInterval(() => {
         const now = new Date();

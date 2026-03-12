@@ -3,7 +3,7 @@ import secrets
 import calendar
 from datetime import datetime, date, timedelta
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
-from models import db, Family, Child, Semester, Schedule, FamilyMember, MemberEvent
+from models import db, Family, Child, Semester, Schedule, FamilyMember, MemberEvent, PrepItem
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', secrets.token_hex(16))
@@ -88,7 +88,12 @@ def index():
     today_dow = datetime.now().weekday()  # 0=월
     today_date = date.today()
 
+    # 내일 요일 계산
+    tomorrow_date = today_date + timedelta(days=1)
+    tomorrow_dow = tomorrow_date.weekday()
+
     children_schedules = []
+    tomorrow_prep = []
     for child in children:
         schedules = Schedule.query.filter_by(
             child_id=child.id, day_of_week=today_dow, is_active=True
@@ -104,13 +109,32 @@ def index():
             'special_events': [e.to_dict() for e in special],
         })
 
+        # 내일 준비물 수집 (내일이 평일인 경우만)
+        if tomorrow_dow < 5:
+            tomorrow_schedules = Schedule.query.filter_by(
+                child_id=child.id, day_of_week=tomorrow_dow, is_active=True
+            ).order_by(Schedule.start_time).all()
+            for s in tomorrow_schedules:
+                if s.prep_items:
+                    tomorrow_prep.append({
+                        'child_name': child.name,
+                        'child_color': child.color,
+                        'schedule_title': s.title,
+                        'start_time': s.start_time,
+                        'items': [p.name for p in s.prep_items],
+                    })
+
+    tomorrow_dow_name = DAY_NAMES[tomorrow_dow] if tomorrow_dow < 5 else ''
+
     return render_template('today.html',
                            family=family,
                            children_schedules=children_schedules,
                            today_dow=today_dow,
                            day_name=DAY_NAMES[today_dow] if today_dow < 5 else '주말',
                            today_str=today_date.strftime('%Y년 %m월 %d일'),
-                           now_time=datetime.now().strftime('%H:%M'))
+                           now_time=datetime.now().strftime('%H:%M'),
+                           tomorrow_prep=tomorrow_prep,
+                           tomorrow_dow_name=tomorrow_dow_name)
 
 
 @app.route('/weekly')
@@ -437,6 +461,28 @@ def api_update_schedule(schedule_id):
 def api_delete_schedule(schedule_id):
     schedule = Schedule.query.get_or_404(schedule_id)
     db.session.delete(schedule)
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+# ─── 준비물 API ───
+
+@app.route('/api/schedule/<int:schedule_id>/prep', methods=['POST'])
+@login_required
+def api_add_prep(schedule_id):
+    Schedule.query.get_or_404(schedule_id)
+    data = request.get_json()
+    item = PrepItem(schedule_id=schedule_id, name=data['name'].strip())
+    db.session.add(item)
+    db.session.commit()
+    return jsonify({'success': True, 'id': item.id, 'name': item.name})
+
+
+@app.route('/api/prep/<int:prep_id>', methods=['DELETE'])
+@login_required
+def api_delete_prep(prep_id):
+    item = PrepItem.query.get_or_404(prep_id)
+    db.session.delete(item)
     db.session.commit()
     return jsonify({'success': True})
 

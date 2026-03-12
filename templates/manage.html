@@ -40,6 +40,12 @@
                     {% if s.location %}<span class="meta-tag">&#128205; {{ s.location }}</span>{% endif %}
                     {% if s.pickup_person %}<span class="meta-tag">&#128664; {{ s.pickup_person }}</span>{% endif %}
                     {% if s.memo %}<div class="schedule-memo">&#128221; {{ s.memo }}</div>{% endif %}
+                    <div class="prep-items" id="prep-{{ s.id }}">
+                        {% for item in s.prep_items %}
+                        <span class="prep-tag">&#127890; {{ item.name }} <button class="prep-del" onclick="deletePrep({{ item.id }}, this)">&times;</button></span>
+                        {% endfor %}
+                        <button class="prep-add-btn" onclick="addPrep({{ s.id }})">+ 준비물</button>
+                    </div>
                 </div>
                 <div class="schedule-actions">
                     <button onclick='copySchedule({{ s|tojson }})' class="btn-icon" title="복사">&#128203;</button>
@@ -154,6 +160,26 @@ async function deleteSchedule(id) {
     if (!confirm('이 일정을 삭제하시겠습니까?')) return;
     const res = await fetch(`/api/schedule/${id}`, {method: 'DELETE'});
     if (res.ok) location.reload();
+}
+
+function addPrep(scheduleId) {
+    const name = prompt('준비물 이름을 입력하세요:');
+    if (!name || !name.trim()) return;
+    fetch(`/api/schedule/${scheduleId}/prep`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name: name.trim()}),
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.success) location.reload();
+        else showToast('저장 실패', true);
+    });
+}
+
+async function deletePrep(prepId, btn) {
+    const res = await fetch(`/api/prep/${prepId}`, {method: 'DELETE'});
+    if (res.ok) btn.closest('.prep-tag').remove();
 }
 
 </script>
