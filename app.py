@@ -14,17 +14,30 @@ db.init_app(app)
 
 with app.app_context():
     db.create_all()
-    # MemberEvent 테이블에 새 컬럼 추가 (기존 DB 마이그레이션)
+    # member_event 테이블 마이그레이션: member_id를 nullable로 변경 + child_id, cancel_normal 추가
     try:
-        db.session.execute(db.text('ALTER TABLE member_event ADD COLUMN child_id INTEGER REFERENCES child(id)'))
-        db.session.commit()
+        # 기존 테이블 구조 확인
+        cols = db.session.execute(db.text("PRAGMA table_info(member_event)")).fetchall()
+        col_names = [c[1] for c in cols]
+        needs_rebuild = 'child_id' not in col_names
+        member_id_notnull = any(c[1] == 'member_id' and c[3] == 1 for c in cols)
+
+        if needs_rebuild or member_id_notnull:
+            # 기존 데이터 백업
+            existing = db.session.execute(db.text('SELECT id, member_id, date, title, description, start_time, end_time FROM member_event')).fetchall()
+            # 테이블 재생성
+            db.session.execute(db.text('DROP TABLE member_event'))
+            db.session.commit()
+            db.create_all()
+            # 데이터 복원
+            for r in existing:
+                db.session.execute(db.text(
+                    'INSERT INTO member_event (id, member_id, date, title, description, start_time, end_time, cancel_normal) VALUES (:id, :mid, :d, :t, :desc, :st, :et, 0)'
+                ), {'id': r[0], 'mid': r[1], 'd': r[2], 't': r[3], 'desc': r[4] or '', 'st': r[5] or '', 'et': r[6] or ''})
+            db.session.commit()
     except Exception:
         db.session.rollback()
-    try:
-        db.session.execute(db.text('ALTER TABLE member_event ADD COLUMN cancel_normal BOOLEAN DEFAULT 0'))
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
+
     # SpecialEvent → MemberEvent 마이그레이션
     try:
         rows = db.session.execute(db.text('SELECT id, child_id, date, title, description, start_time, end_time, cancel_normal FROM special_event')).fetchall()
