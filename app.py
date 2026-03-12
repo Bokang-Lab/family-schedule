@@ -3,7 +3,7 @@ import secrets
 import calendar
 from datetime import datetime, date, timedelta
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
-from models import db, Family, Child, Semester, Schedule, SpecialEvent, FamilyMember, MemberEvent
+from models import db, Family, Child, Semester, Schedule, FamilyMember, MemberEvent
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', secrets.token_hex(16))
@@ -14,6 +14,32 @@ db.init_app(app)
 
 with app.app_context():
     db.create_all()
+    # MemberEvent 테이블에 새 컬럼 추가 (기존 DB 마이그레이션)
+    try:
+        db.session.execute(db.text('ALTER TABLE member_event ADD COLUMN child_id INTEGER REFERENCES child(id)'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    try:
+        db.session.execute(db.text('ALTER TABLE member_event ADD COLUMN cancel_normal BOOLEAN DEFAULT 0'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    # SpecialEvent → MemberEvent 마이그레이션
+    try:
+        rows = db.session.execute(db.text('SELECT id, child_id, date, title, description, start_time, end_time, cancel_normal FROM special_event')).fetchall()
+        if rows:
+            for r in rows:
+                exists = db.session.execute(db.text(
+                    'SELECT 1 FROM member_event WHERE child_id=:cid AND date=:d AND title=:t'
+                ), {'cid': r[1], 'd': r[2], 't': r[3]}).fetchone()
+                if not exists:
+                    db.session.execute(db.text(
+                        'INSERT INTO member_event (child_id, date, title, description, start_time, end_time, cancel_normal) VALUES (:cid, :d, :t, :desc, :st, :et, :cn)'
+                    ), {'cid': r[1], 'd': r[2], 't': r[3], 'desc': r[4] or '', 'st': r[5] or '', 'et': r[6] or '', 'cn': r[7] or False})
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
 
 DAY_NAMES = ['월', '화', '수', '목', '금']
 DAY_NAMES_FULL = ['일', '월', '화', '수', '목', '금', '토']  # 한국 달력 (일~토)
@@ -55,7 +81,7 @@ def index():
             child_id=child.id, day_of_week=today_dow, is_active=True
         ).order_by(Schedule.start_time).all()
 
-        special = SpecialEvent.query.filter_by(
+        special = MemberEvent.query.filter_by(
             child_id=child.id, date=today_date
         ).all()
 
@@ -116,8 +142,8 @@ def weekly():
             ).order_by(Schedule.start_time).all()
             weekly_data[i] = [s.to_dict() for s in schedules]
 
-            # 해당 날짜의 특별 일정
-            specials = SpecialEvent.query.filter_by(
+            # 해당 날짜의 특별 일정 (자녀 일정)
+            specials = MemberEvent.query.filter_by(
                 child_id=selected_child_id, date=week_dates[i]
             ).all()
             special_events_data[i] = [e.to_dict() for e in specials]
@@ -166,60 +192,32 @@ def monthly():
     first_date = month_days[0][0]
     last_date = month_days[-1][6]
 
-    # 자녀 특별 일정 조회
+    # 모든 일정 통합 조회 (자녀 + 구성원)
     child_ids = [c.id for c in children]
-    special_events = []
-    if child_ids:
-        special_events = SpecialEvent.query.filter(
-            SpecialEvent.child_id.in_(child_ids),
-            SpecialEvent.date >= first_date,
-            SpecialEvent.date <= last_date
-        ).all()
-
-    # 가족 구성원 일정 조회
     member_ids = [m.id for m in members]
-    member_events = []
+
+    from sqlalchemy import or_
+    conditions = []
+    if child_ids:
+        conditions.append(MemberEvent.child_id.in_(child_ids))
     if member_ids:
-        member_events = MemberEvent.query.filter(
-            MemberEvent.member_id.in_(member_ids),
+        conditions.append(MemberEvent.member_id.in_(member_ids))
+
+    all_events = []
+    if conditions:
+        all_events = MemberEvent.query.filter(
+            or_(*conditions),
             MemberEvent.date >= first_date,
             MemberEvent.date <= last_date
         ).all()
 
     # 날짜별 이벤트 맵 구성
     events_by_date = {}
-    for ev in special_events:
+    for ev in all_events:
         d = ev.date.isoformat()
         if d not in events_by_date:
             events_by_date[d] = []
-        child = next((c for c in children if c.id == ev.child_id), None)
-        events_by_date[d].append({
-            'id': ev.id,
-            'title': ev.title,
-            'start_time': ev.start_time or '',
-            'end_time': ev.end_time or '',
-            'person_name': child.name if child else '',
-            'person_color': child.color if child else '#999',
-            'type': 'child_special',
-            'description': ev.description or '',
-            'cancel_normal': ev.cancel_normal,
-        })
-
-    for ev in member_events:
-        d = ev.date.isoformat()
-        if d not in events_by_date:
-            events_by_date[d] = []
-        events_by_date[d].append({
-            'id': ev.id,
-            'title': ev.title,
-            'start_time': ev.start_time or '',
-            'end_time': ev.end_time or '',
-            'person_name': ev.member.name if ev.member else '',
-            'person_color': ev.member.color if ev.member else '#999',
-            'type': 'member_event',
-            'description': ev.description or '',
-            'member_id': ev.member_id,
-        })
+        events_by_date[d].append(ev.to_dict())
 
     # 캘린더 데이터 구성
     calendar_data = []
@@ -263,14 +261,10 @@ def manage():
         selected_child_id = children[0].id
 
     schedules = []
-    special_events = []
     if selected_child_id:
         schedules = Schedule.query.filter_by(
             child_id=selected_child_id, is_active=True
         ).order_by(Schedule.day_of_week, Schedule.start_time).all()
-        special_events = SpecialEvent.query.filter_by(
-            child_id=selected_child_id
-        ).filter(SpecialEvent.date >= date.today()).order_by(SpecialEvent.date).all()
 
     return render_template('manage.html',
                            family=family,
@@ -278,7 +272,6 @@ def manage():
                            semesters=semesters,
                            selected_child_id=selected_child_id,
                            schedules=[s.to_dict() for s in schedules],
-                           special_events=[e.to_dict() for e in special_events],
                            day_names=DAY_NAMES)
 
 
@@ -435,49 +428,6 @@ def api_delete_schedule(schedule_id):
     return jsonify({'success': True})
 
 
-# ─── 특별일정 API ───
-
-@app.route('/api/special-event', methods=['POST'])
-@login_required
-def api_add_special_event():
-    data = request.get_json()
-    event = SpecialEvent(
-        child_id=data['child_id'],
-        date=date.fromisoformat(data['date']),
-        title=data['title'],
-        description=data.get('description', ''),
-        start_time=data.get('start_time', ''),
-        end_time=data.get('end_time', ''),
-        cancel_normal=data.get('cancel_normal', False),
-    )
-    db.session.add(event)
-    db.session.commit()
-    return jsonify({'success': True, 'event': event.to_dict()})
-
-
-@app.route('/api/special-event/<int:event_id>', methods=['PUT'])
-@login_required
-def api_update_special_event(event_id):
-    event = SpecialEvent.query.get_or_404(event_id)
-    data = request.get_json()
-    for field in ['title', 'description', 'start_time', 'end_time', 'cancel_normal']:
-        if field in data:
-            setattr(event, field, data[field])
-    if 'date' in data:
-        event.date = date.fromisoformat(data['date'])
-    db.session.commit()
-    return jsonify({'success': True, 'event': event.to_dict()})
-
-
-@app.route('/api/special-event/<int:event_id>', methods=['DELETE'])
-@login_required
-def api_delete_special_event(event_id):
-    event = SpecialEvent.query.get_or_404(event_id)
-    db.session.delete(event)
-    db.session.commit()
-    return jsonify({'success': True})
-
-
 # ─── 학기 API ───
 
 @app.route('/api/semester', methods=['POST'])
@@ -569,12 +519,14 @@ def api_delete_member(member_id):
 def api_add_member_event():
     data = request.get_json()
     event = MemberEvent(
-        member_id=data['member_id'],
+        member_id=data.get('member_id'),
+        child_id=data.get('child_id'),
         date=date.fromisoformat(data['date']),
         title=data['title'],
         description=data.get('description', ''),
         start_time=data.get('start_time', ''),
         end_time=data.get('end_time', ''),
+        cancel_normal=data.get('cancel_normal', False),
     )
     db.session.add(event)
     db.session.commit()
@@ -586,13 +538,17 @@ def api_add_member_event():
 def api_update_member_event(event_id):
     event = MemberEvent.query.get_or_404(event_id)
     data = request.get_json()
-    for field in ['title', 'description', 'start_time', 'end_time']:
+    for field in ['title', 'description', 'start_time', 'end_time', 'cancel_normal']:
         if field in data:
             setattr(event, field, data[field])
     if 'date' in data:
         event.date = date.fromisoformat(data['date'])
     if 'member_id' in data:
         event.member_id = data['member_id']
+        event.child_id = None
+    if 'child_id' in data:
+        event.child_id = data['child_id']
+        event.member_id = None
     db.session.commit()
     return jsonify({'success': True, 'event': event.to_dict()})
 

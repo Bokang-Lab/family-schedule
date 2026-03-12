@@ -57,32 +57,6 @@
         {% endif %}
     </div>
 
-    <!-- 특별 일정 -->
-    <div class="section">
-        <div class="section-header">
-            <h2>특별 일정</h2>
-            <button onclick="showAddSpecialEvent()" class="btn btn-sm btn-primary">+ 추가</button>
-        </div>
-
-        {% for ev in special_events %}
-        <div class="schedule-card special">
-            <div class="schedule-info">
-                <div class="schedule-time">{{ ev.date }}{% if ev.start_time %} {{ ev.start_time }}-{{ ev.end_time }}{% endif %}</div>
-                <div class="schedule-title">&#9733; {{ ev.title }}</div>
-                {% if ev.description %}<div class="schedule-memo">{{ ev.description }}</div>{% endif %}
-                {% if ev.cancel_normal %}<span class="meta-tag cancel">정규일정 취소</span>{% endif %}
-            </div>
-            <div class="schedule-actions">
-                <button onclick='showEditSpecialEvent({{ ev|tojson }})' class="btn-icon">&#9998;</button>
-                <button onclick="deleteSpecialEvent({{ ev.id }})" class="btn-icon btn-danger">&#128465;</button>
-            </div>
-        </div>
-        {% endfor %}
-
-        {% if not special_events %}
-        <div class="no-schedule">등록된 특별 일정이 없습니다.</div>
-        {% endif %}
-    </div>
 {% endif %}
 {% endblock %}
 
@@ -182,74 +156,5 @@ async function deleteSchedule(id) {
     if (res.ok) location.reload();
 }
 
-function showAddSpecialEvent() {
-    const html = buildSpecialEventForm({});
-    openModal('특별 일정 추가', html);
-}
-
-function showEditSpecialEvent(ev) {
-    const html = buildSpecialEventForm(ev);
-    openModal('특별 일정 수정', html);
-}
-
-function buildSpecialEventForm(ev) {
-    const isEdit = !!ev.id;
-    return `
-    <form onsubmit="saveSpecialEvent(event, ${ev.id || 'null'})">
-        <div class="form-group">
-            <label>날짜</label>
-            <input type="date" id="fe-date" value="${ev.date || ''}" required>
-        </div>
-        <div class="form-group">
-            <label>제목</label>
-            <input type="text" id="fe-title" value="${ev.title || ''}" placeholder="예: 현장학습, 재량휴업" required>
-        </div>
-        <div class="form-group">
-            <label>설명 <span class="optional">(선택)</span></label>
-            <input type="text" id="fe-desc" value="${ev.description || ''}" placeholder="상세 내용">
-        </div>
-        <div class="form-row">
-            <div class="form-group">
-                <label>시작 시간 <span class="optional">(선택)</span></label>
-                <input type="time" id="fe-start" value="${ev.start_time || ''}">
-            </div>
-            <div class="form-group">
-                <label>종료 시간 <span class="optional">(선택)</span></label>
-                <input type="time" id="fe-end" value="${ev.end_time || ''}">
-            </div>
-        </div>
-        <div class="form-group">
-            <label class="checkbox-label">
-                <input type="checkbox" id="fe-cancel" ${ev.cancel_normal ? 'checked' : ''}>
-                이 날 정규 일정 취소
-            </label>
-        </div>
-        <button type="submit" class="btn btn-primary btn-full">${isEdit ? '수정' : '추가'}</button>
-    </form>`;
-}
-
-async function saveSpecialEvent(e, eventId) {
-    e.preventDefault();
-    const data = {
-        child_id: CHILD_ID,
-        date: document.getElementById('fe-date').value,
-        title: document.getElementById('fe-title').value,
-        description: document.getElementById('fe-desc').value,
-        start_time: document.getElementById('fe-start').value,
-        end_time: document.getElementById('fe-end').value,
-        cancel_normal: document.getElementById('fe-cancel').checked,
-    };
-    const url = eventId ? `/api/special-event/${eventId}` : '/api/special-event';
-    const method = eventId ? 'PUT' : 'POST';
-    const res = await fetch(url, {method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)});
-    if (res.ok) { closeModal(); location.reload(); }
-    else showToast('저장에 실패했습니다.', true);
-}
-
-async function deleteSpecialEvent(id) {
-    if (!confirm('이 특별 일정을 삭제하시겠습니까?')) return;
-    const res = await fetch(`/api/special-event/${id}`, {method: 'DELETE'});
-    if (res.ok) location.reload();
-}
 </script>
 {% endblock %}

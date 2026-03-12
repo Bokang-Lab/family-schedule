@@ -139,35 +139,49 @@ function showEventActions(ev) {
     if (ev.description) {
         html += `<div class="detail-row"><strong>내용</strong> ${ev.description}</div>`;
     }
-    html += `<div class="detail-row"><strong>유형</strong> ${ev.type === 'special' ? '특별일정' : '구성원 일정'}</div>`;
-
-    if (ev.type === 'member') {
-        html += `
-            <div style="display:flex;gap:8px;margin-top:16px;">
-                <button class="btn btn-outline" style="flex:1;" onclick="editEvent(${JSON.stringify(ev).replace(/"/g, '&quot;')})">수정</button>
-                <button class="btn btn-danger-outline" style="flex:1;" onclick="deleteEvent(${ev.id})">삭제</button>
-            </div>
-        `;
+    if (ev.cancel_normal) {
+        html += `<div class="detail-row"><strong>참고</strong> <span style="color:#E74C3C;font-weight:600">정규 일정 취소</span></div>`;
     }
 
+    html += `
+        <div style="display:flex;gap:8px;margin-top:16px;">
+            <button class="btn btn-outline" style="flex:1;" onclick="editEvent(${JSON.stringify(ev).replace(/"/g, '&quot;')})">수정</button>
+            <button class="btn btn-danger-outline" style="flex:1;" onclick="deleteEvent(${ev.id})">삭제</button>
+        </div>
+    `;
+
     openModal(ev.title, html);
+}
+
+function buildPersonOptions(selectedId) {
+    let opts = '<optgroup label="자녀">';
+    familyMembers.filter(m => m.type === 'child').forEach(m => {
+        const sel = m.id === selectedId ? 'selected' : '';
+        opts += `<option value="${m.id}" ${sel}>${m.name}</option>`;
+    });
+    opts += '</optgroup><optgroup label="가족 구성원">';
+    familyMembers.filter(m => m.type === 'member').forEach(m => {
+        const sel = m.id === selectedId ? 'selected' : '';
+        opts += `<option value="${m.id}" ${sel}>${m.name}</option>`;
+    });
+    opts += '</optgroup>';
+    return opts;
+}
+
+function onPersonChange() {
+    const val = document.getElementById('ev-person').value;
+    const isChild = val.startsWith('child_');
+    document.getElementById('cancel-normal-group').style.display = isChild ? 'block' : 'none';
 }
 
 function showAddEvent(dateStr) {
     const today = dateStr || new Date().toISOString().split('T')[0];
 
-    let memberOptions = '';
-    familyMembers.forEach(m => {
-        if (m.type === 'member') {
-            memberOptions += `<option value="${m.id}">${m.name}</option>`;
-        }
-    });
-
     const html = `
         <form onsubmit="event.preventDefault(); submitEvent();">
             <div class="form-group">
                 <label>담당자</label>
-                <select id="ev-member" required>${memberOptions}</select>
+                <select id="ev-person" required onchange="onPersonChange()">${buildPersonOptions()}</select>
             </div>
             <div class="form-group">
                 <label>날짜</label>
@@ -191,21 +205,38 @@ function showAddEvent(dateStr) {
                 <label>설명 <span class="optional">(선택)</span></label>
                 <input type="text" id="ev-desc" placeholder="간단한 설명">
             </div>
+            <div class="form-group" id="cancel-normal-group" style="display:none;">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="ev-cancel">
+                    이 날 정규 일정 취소
+                </label>
+            </div>
             <button type="submit" class="btn btn-primary btn-full">저장</button>
         </form>
     `;
 
     openModal('일정 추가', html);
+    setTimeout(onPersonChange, 0);
+}
+
+function getPersonData() {
+    const val = document.getElementById('ev-person').value;
+    if (typeof val === 'string' && val.startsWith('child_')) {
+        return { child_id: parseInt(val.replace('child_', '')) };
+    }
+    return { member_id: parseInt(val) };
 }
 
 function submitEvent() {
+    const person = getPersonData();
     const data = {
-        member_id: parseInt(document.getElementById('ev-member').value),
+        ...person,
         date: document.getElementById('ev-date').value,
         title: document.getElementById('ev-title').value,
         description: document.getElementById('ev-desc').value || '',
         start_time: document.getElementById('ev-start').value || '',
         end_time: document.getElementById('ev-end').value || '',
+        cancel_normal: document.getElementById('ev-cancel') ? document.getElementById('ev-cancel').checked : false,
     };
 
     fetch('/api/member-event', {
@@ -227,19 +258,14 @@ function submitEvent() {
 }
 
 function editEvent(ev) {
-    let memberOptions = '';
-    familyMembers.forEach(m => {
-        if (m.type === 'member') {
-            const sel = m.id === ev.member_id ? 'selected' : '';
-            memberOptions += `<option value="${m.id}" ${sel}>${m.name}</option>`;
-        }
-    });
+    const selectedId = ev.child_id ? 'child_' + ev.child_id : ev.member_id;
+    const isChild = !!ev.child_id;
 
     const html = `
         <form onsubmit="event.preventDefault(); updateEvent(${ev.id});">
             <div class="form-group">
                 <label>담당자</label>
-                <select id="ev-member">${memberOptions}</select>
+                <select id="ev-person" onchange="onPersonChange()">${buildPersonOptions(selectedId)}</select>
             </div>
             <div class="form-group">
                 <label>날짜</label>
@@ -263,6 +289,12 @@ function editEvent(ev) {
                 <label>설명 <span class="optional">(선택)</span></label>
                 <input type="text" id="ev-desc" value="${ev.description || ''}">
             </div>
+            <div class="form-group" id="cancel-normal-group" style="display:${isChild ? 'block' : 'none'};">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="ev-cancel" ${ev.cancel_normal ? 'checked' : ''}>
+                    이 날 정규 일정 취소
+                </label>
+            </div>
             <button type="submit" class="btn btn-primary btn-full">수정</button>
         </form>
     `;
@@ -271,13 +303,15 @@ function editEvent(ev) {
 }
 
 function updateEvent(eventId) {
+    const person = getPersonData();
     const data = {
-        member_id: parseInt(document.getElementById('ev-member').value),
+        ...person,
         date: document.getElementById('ev-date').value,
         title: document.getElementById('ev-title').value,
         description: document.getElementById('ev-desc').value || '',
         start_time: document.getElementById('ev-start').value || '',
         end_time: document.getElementById('ev-end').value || '',
+        cancel_normal: document.getElementById('ev-cancel') ? document.getElementById('ev-cancel').checked : false,
     };
 
     fetch(`/api/member-event/${eventId}`, {

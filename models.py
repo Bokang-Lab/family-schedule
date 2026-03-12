@@ -23,7 +23,6 @@ class Child(db.Model):
     color = db.Column(db.String(7), default='#4A90D9')
     sort_order = db.Column(db.Integer, default=0)
     schedules = db.relationship('Schedule', backref='child', lazy=True, cascade='all, delete-orphan')
-    special_events = db.relationship('SpecialEvent', backref='child', lazy=True, cascade='all, delete-orphan')
 
     def to_dict(self):
         return {
@@ -138,22 +137,35 @@ class FamilyMember(db.Model):
 
 class MemberEvent(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    member_id = db.Column(db.Integer, db.ForeignKey('family_member.id'), nullable=False)
+    member_id = db.Column(db.Integer, db.ForeignKey('family_member.id'), nullable=True)
+    child_id = db.Column(db.Integer, db.ForeignKey('child.id'), nullable=True)
     date = db.Column(db.Date, nullable=False)
     title = db.Column(db.String(50), nullable=False)
     description = db.Column(db.String(200), default='')
     start_time = db.Column(db.String(5), default='')
     end_time = db.Column(db.String(5), default='')
+    cancel_normal = db.Column(db.Boolean, default=False)
+
+    child = db.relationship('Child', backref='member_events')
 
     def to_dict(self):
+        if self.child_id:
+            person_name = self.child.name if self.child else ''
+            person_color = self.child.color if self.child else '#999'
+        else:
+            person_name = self.member.name if self.member else ''
+            person_color = self.member.color if self.member else '#999'
         return {
             'id': self.id,
             'member_id': self.member_id,
-            'member_name': self.member.name if self.member else '',
-            'member_color': self.member.color if self.member else '#999',
+            'child_id': self.child_id,
+            'person_name': person_name,
+            'person_color': person_color,
+            'type': 'child' if self.child_id else 'member',
             'date': self.date.isoformat(),
             'title': self.title,
             'description': self.description,
-            'start_time': self.start_time,
-            'end_time': self.end_time,
+            'start_time': self.start_time or '',
+            'end_time': self.end_time or '',
+            'cancel_normal': self.cancel_normal or False,
         }
