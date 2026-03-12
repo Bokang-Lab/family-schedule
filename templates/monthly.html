@@ -53,7 +53,7 @@
             <div class="cal-events">
                 {% for event in day.events[:3] %}
                 <div class="cal-event" style="background: {{ event.person_color }}; color: white;">
-                    {{ event.title[:6] }}{% if event.title|length > 6 %}..{% endif %}
+                    {{ event.title }}
                 </div>
                 {% endfor %}
                 {% if day.events|length > 3 %}
