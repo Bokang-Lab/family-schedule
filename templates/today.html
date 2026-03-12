@@ -69,7 +69,7 @@
                 <span class="prep-schedule-name">{{ p.schedule_title }} ({{ p.start_time }})</span>
             </div>
             <div class="prep-checklist">
-                {% for item in p.items %}
+                {% for item in p.prep_list %}
                 <label class="prep-check-item">
                     <input type="checkbox" onchange="togglePrepCheck(this, '{{ item }}')">
                     <span>{{ item }}</span>

@@ -121,7 +121,7 @@ def index():
                         'child_color': child.color,
                         'schedule_title': s.title,
                         'start_time': s.start_time,
-                        'items': [p.name for p in s.prep_items],
+                        'prep_list': [p.name for p in s.prep_items],
                     })
 
     tomorrow_dow_name = DAY_NAMES[tomorrow_dow] if tomorrow_dow < 5 else ''
