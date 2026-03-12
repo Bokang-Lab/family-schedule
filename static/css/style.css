@@ -250,13 +250,13 @@ body {
 .tt-body {
     display: grid;
     grid-template-columns: 36px 1fr;
-    overflow-x: auto;
+    overflow-x: hidden;
 }
 
 /* 좌측 시간 라벨 */
 .tt-time-labels {
     background: #F8F9FA;
-    border-right: 1px solid var(--border);
+    border-right: none;
 }
 .tt-hour-label {
     height: 60px; /* JS에서 동적 조정 */
@@ -352,8 +352,8 @@ body {
 
 /* 반응형 - 작은 화면 */
 @media (max-width: 480px) {
-    .tt-header { grid-template-columns: 28px repeat(7, 1fr); }
-    .tt-body { grid-template-columns: 28px 1fr; }
+    .tt-header { grid-template-columns: 26px repeat(7, 1fr); }
+    .tt-body { grid-template-columns: 26px 1fr; }
     .tt-hour-label { font-size: 0.55rem; }
     .tt-block-title { font-size: 0.5rem; }
     .tt-block-time { font-size: 0.45rem; }
