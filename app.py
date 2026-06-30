@@ -6,7 +6,28 @@ from flask import Flask, render_template, request, jsonify, session, redirect, u
 from models import db, Family, Child, Semester, Schedule, FamilyMember, MemberEvent, PrepItem
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', secrets.token_hex(16))
+
+
+def _load_secret_key():
+    """SECRET_KEY 확보: 환경변수 우선, 없으면 instance 폴더의 키 파일을 재사용.
+    재시작/Reload 시에도 키가 유지되어 로그인 세션이 풀리지 않는다."""
+    env_key = os.environ.get('SECRET_KEY')
+    if env_key:
+        return env_key
+    os.makedirs(app.instance_path, exist_ok=True)
+    key_path = os.path.join(app.instance_path, 'secret_key')
+    if os.path.exists(key_path):
+        with open(key_path, 'r') as f:
+            key = f.read().strip()
+        if key:
+            return key
+    key = secrets.token_hex(32)
+    with open(key_path, 'w') as f:
+        f.write(key)
+    return key
+
+
+app.config['SECRET_KEY'] = _load_secret_key()
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///schedule.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -64,6 +85,57 @@ def get_family():
     if not family_id:
         return None
     return db.session.get(Family, family_id)
+
+
+# ─── 소유권 확인 헬퍼 (IDOR 방지: 현재 가족 소유 자원만 반환) ───
+
+def _not_found():
+    return jsonify({'success': False, 'error': '찾을 수 없거나 권한이 없습니다.'}), 404
+
+
+def owned_child(child_id):
+    family = get_family()
+    return Child.query.filter_by(id=child_id, family_id=family.id).first()
+
+
+def owned_schedule(schedule_id):
+    family = get_family()
+    return (Schedule.query.join(Child)
+            .filter(Schedule.id == schedule_id, Child.family_id == family.id)
+            .first())
+
+
+def owned_semester(semester_id):
+    family = get_family()
+    return Semester.query.filter_by(id=semester_id, family_id=family.id).first()
+
+
+def owned_member(member_id):
+    family = get_family()
+    return FamilyMember.query.filter_by(id=member_id, family_id=family.id).first()
+
+
+def owned_member_event(event_id):
+    family = get_family()
+    event = db.session.get(MemberEvent, event_id)
+    if not event:
+        return None
+    if event.child_id:
+        child = db.session.get(Child, event.child_id)
+        return event if (child and child.family_id == family.id) else None
+    if event.member_id:
+        member = db.session.get(FamilyMember, event.member_id)
+        return event if (member and member.family_id == family.id) else None
+    return None
+
+
+def valid_event_target(data):
+    """member-event 생성/수정 시 대상 자녀/구성원이 현재 가족 소유인지 검증"""
+    if data.get('child_id'):
+        return owned_child(data['child_id']) is not None
+    if data.get('member_id'):
+        return owned_member(data['member_id']) is not None
+    return False
 
 
 def login_required(f):
@@ -400,7 +472,9 @@ def api_add_child():
 @app.route('/api/child/<int:child_id>', methods=['PUT'])
 @login_required
 def api_update_child(child_id):
-    child = Child.query.get_or_404(child_id)
+    child = owned_child(child_id)
+    if not child:
+        return _not_found()
     data = request.get_json()
     child.name = data.get('name', child.name)
     child.grade = data.get('grade', child.grade)
@@ -414,7 +488,9 @@ def api_update_child(child_id):
 @app.route('/api/child/<int:child_id>', methods=['DELETE'])
 @login_required
 def api_delete_child(child_id):
-    child = Child.query.get_or_404(child_id)
+    child = owned_child(child_id)
+    if not child:
+        return _not_found()
     db.session.delete(child)
     db.session.commit()
     return jsonify({'success': True})
@@ -426,6 +502,8 @@ def api_delete_child(child_id):
 @login_required
 def api_add_schedule():
     data = request.get_json()
+    if not owned_child(data['child_id']):
+        return _not_found()
     schedule = Schedule(
         child_id=data['child_id'],
         semester_id=data.get('semester_id'),
@@ -446,7 +524,9 @@ def api_add_schedule():
 @app.route('/api/schedule/<int:schedule_id>', methods=['PUT'])
 @login_required
 def api_update_schedule(schedule_id):
-    schedule = Schedule.query.get_or_404(schedule_id)
+    schedule = owned_schedule(schedule_id)
+    if not schedule:
+        return _not_found()
     data = request.get_json()
     for field in ['day_of_week', 'start_time', 'end_time', 'title', 'category',
                   'location', 'memo', 'pickup_person', 'semester_id', 'is_active']:
@@ -459,7 +539,9 @@ def api_update_schedule(schedule_id):
 @app.route('/api/schedule/<int:schedule_id>', methods=['DELETE'])
 @login_required
 def api_delete_schedule(schedule_id):
-    schedule = Schedule.query.get_or_404(schedule_id)
+    schedule = owned_schedule(schedule_id)
+    if not schedule:
+        return _not_found()
     db.session.delete(schedule)
     db.session.commit()
     return jsonify({'success': True})
@@ -470,7 +552,8 @@ def api_delete_schedule(schedule_id):
 @app.route('/api/schedule/<int:schedule_id>/prep', methods=['POST'])
 @login_required
 def api_add_prep(schedule_id):
-    Schedule.query.get_or_404(schedule_id)
+    if not owned_schedule(schedule_id):
+        return _not_found()
     data = request.get_json()
     item = PrepItem(schedule_id=schedule_id, name=data['name'].strip())
     db.session.add(item)
@@ -481,7 +564,9 @@ def api_add_prep(schedule_id):
 @app.route('/api/prep/<int:prep_id>', methods=['DELETE'])
 @login_required
 def api_delete_prep(prep_id):
-    item = PrepItem.query.get_or_404(prep_id)
+    item = db.session.get(PrepItem, prep_id)
+    if not item or not owned_schedule(item.schedule_id):
+        return _not_found()
     db.session.delete(item)
     db.session.commit()
     return jsonify({'success': True})
@@ -509,7 +594,9 @@ def api_add_semester():
 @app.route('/api/semester/<int:semester_id>', methods=['PUT'])
 @login_required
 def api_update_semester(semester_id):
-    semester = Semester.query.get_or_404(semester_id)
+    semester = owned_semester(semester_id)
+    if not semester:
+        return _not_found()
     data = request.get_json()
     semester.name = data.get('name', semester.name)
     if 'start_date' in data:
@@ -524,7 +611,9 @@ def api_update_semester(semester_id):
 @app.route('/api/semester/<int:semester_id>', methods=['DELETE'])
 @login_required
 def api_delete_semester(semester_id):
-    semester = Semester.query.get_or_404(semester_id)
+    semester = owned_semester(semester_id)
+    if not semester:
+        return _not_found()
     db.session.delete(semester)
     db.session.commit()
     return jsonify({'success': True})
@@ -552,7 +641,9 @@ def api_add_member():
 @app.route('/api/member/<int:member_id>', methods=['PUT'])
 @login_required
 def api_update_member(member_id):
-    member = FamilyMember.query.get_or_404(member_id)
+    member = owned_member(member_id)
+    if not member:
+        return _not_found()
     data = request.get_json()
     member.name = data.get('name', member.name)
     member.role = data.get('role', member.role)
@@ -565,7 +656,9 @@ def api_update_member(member_id):
 @app.route('/api/member/<int:member_id>', methods=['DELETE'])
 @login_required
 def api_delete_member(member_id):
-    member = FamilyMember.query.get_or_404(member_id)
+    member = owned_member(member_id)
+    if not member:
+        return _not_found()
     db.session.delete(member)
     db.session.commit()
     return jsonify({'success': True})
@@ -577,6 +670,8 @@ def api_delete_member(member_id):
 @login_required
 def api_add_member_event():
     data = request.get_json()
+    if not valid_event_target(data):
+        return _not_found()
     event = MemberEvent(
         member_id=data.get('member_id'),
         child_id=data.get('child_id'),
@@ -597,6 +692,8 @@ def api_add_member_event():
 def api_add_recurring_event():
     """매월 반복 일정 일괄 생성"""
     data = request.get_json()
+    if not valid_event_target(data):
+        return _not_found()
     day_of_month = data['day']
     start_ym = data['start_month']  # "2026-03"
     end_ym = data['end_month']      # "2026-12"
@@ -635,8 +732,15 @@ def api_add_recurring_event():
 @app.route('/api/member-event/<int:event_id>', methods=['PUT'])
 @login_required
 def api_update_member_event(event_id):
-    event = MemberEvent.query.get_or_404(event_id)
+    event = owned_member_event(event_id)
+    if not event:
+        return _not_found()
     data = request.get_json()
+    # 대상을 다른 자녀/구성원으로 변경하는 경우, 새 대상도 현재 가족 소유인지 검증
+    if data.get('member_id') and not owned_member(data['member_id']):
+        return _not_found()
+    if data.get('child_id') and not owned_child(data['child_id']):
+        return _not_found()
     for field in ['title', 'description', 'start_time', 'end_time', 'cancel_normal']:
         if field in data:
             setattr(event, field, data[field])
@@ -655,7 +759,9 @@ def api_update_member_event(event_id):
 @app.route('/api/member-event/<int:event_id>', methods=['DELETE'])
 @login_required
 def api_delete_member_event(event_id):
-    event = MemberEvent.query.get_or_404(event_id)
+    event = owned_member_event(event_id)
+    if not event:
+        return _not_found()
     db.session.delete(event)
     db.session.commit()
     return jsonify({'success': True})
