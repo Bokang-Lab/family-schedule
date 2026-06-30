@@ -28,52 +28,60 @@ def _load_secret_key():
 
 
 app.config['SECRET_KEY'] = _load_secret_key()
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///schedule.db')
+
+# DATABASE_URL 정규화: Render 등은 'postgres://'로 주지만 SQLAlchemy는 'postgresql://'를 요구
+_db_url = os.environ.get('DATABASE_URL', 'sqlite:///schedule.db')
+if _db_url.startswith('postgres://'):
+    _db_url = _db_url.replace('postgres://', 'postgresql://', 1)
+app.config['SQLALCHEMY_DATABASE_URI'] = _db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)
 
 with app.app_context():
     db.create_all()
-    # member_event 테이블 마이그레이션: member_id를 nullable로 변경 + child_id, cancel_normal 추가
-    try:
-        # 기존 테이블 구조 확인
-        cols = db.session.execute(db.text("PRAGMA table_info(member_event)")).fetchall()
-        col_names = [c[1] for c in cols]
-        needs_rebuild = 'child_id' not in col_names
-        member_id_notnull = any(c[1] == 'member_id' and c[3] == 1 for c in cols)
+    # 아래 마이그레이션은 SQLite 전용(PRAGMA/DROP TABLE 등).
+    # PostgreSQL 등 새 DB에서는 create_all()로 스키마가 완성되므로 건너뛴다.
+    if app.config['SQLALCHEMY_DATABASE_URI'].startswith('sqlite'):
+        # member_event 테이블 마이그레이션: member_id를 nullable로 변경 + child_id, cancel_normal 추가
+        try:
+            # 기존 테이블 구조 확인
+            cols = db.session.execute(db.text("PRAGMA table_info(member_event)")).fetchall()
+            col_names = [c[1] for c in cols]
+            needs_rebuild = 'child_id' not in col_names
+            member_id_notnull = any(c[1] == 'member_id' and c[3] == 1 for c in cols)
 
-        if needs_rebuild or member_id_notnull:
-            # 기존 데이터 백업
-            existing = db.session.execute(db.text('SELECT id, member_id, date, title, description, start_time, end_time FROM member_event')).fetchall()
-            # 테이블 재생성
-            db.session.execute(db.text('DROP TABLE member_event'))
-            db.session.commit()
-            db.create_all()
-            # 데이터 복원
-            for r in existing:
-                db.session.execute(db.text(
-                    'INSERT INTO member_event (id, member_id, date, title, description, start_time, end_time, cancel_normal) VALUES (:id, :mid, :d, :t, :desc, :st, :et, 0)'
-                ), {'id': r[0], 'mid': r[1], 'd': r[2], 't': r[3], 'desc': r[4] or '', 'st': r[5] or '', 'et': r[6] or ''})
-            db.session.commit()
-    except Exception:
-        db.session.rollback()
-
-    # SpecialEvent → MemberEvent 마이그레이션
-    try:
-        rows = db.session.execute(db.text('SELECT id, child_id, date, title, description, start_time, end_time, cancel_normal FROM special_event')).fetchall()
-        if rows:
-            for r in rows:
-                exists = db.session.execute(db.text(
-                    'SELECT 1 FROM member_event WHERE child_id=:cid AND date=:d AND title=:t'
-                ), {'cid': r[1], 'd': r[2], 't': r[3]}).fetchone()
-                if not exists:
+            if needs_rebuild or member_id_notnull:
+                # 기존 데이터 백업
+                existing = db.session.execute(db.text('SELECT id, member_id, date, title, description, start_time, end_time FROM member_event')).fetchall()
+                # 테이블 재생성
+                db.session.execute(db.text('DROP TABLE member_event'))
+                db.session.commit()
+                db.create_all()
+                # 데이터 복원
+                for r in existing:
                     db.session.execute(db.text(
-                        'INSERT INTO member_event (child_id, date, title, description, start_time, end_time, cancel_normal) VALUES (:cid, :d, :t, :desc, :st, :et, :cn)'
-                    ), {'cid': r[1], 'd': r[2], 't': r[3], 'desc': r[4] or '', 'st': r[5] or '', 'et': r[6] or '', 'cn': r[7] or False})
-            db.session.commit()
-    except Exception:
-        db.session.rollback()
+                        'INSERT INTO member_event (id, member_id, date, title, description, start_time, end_time, cancel_normal) VALUES (:id, :mid, :d, :t, :desc, :st, :et, 0)'
+                    ), {'id': r[0], 'mid': r[1], 'd': r[2], 't': r[3], 'desc': r[4] or '', 'st': r[5] or '', 'et': r[6] or ''})
+                db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+        # SpecialEvent → MemberEvent 마이그레이션
+        try:
+            rows = db.session.execute(db.text('SELECT id, child_id, date, title, description, start_time, end_time, cancel_normal FROM special_event')).fetchall()
+            if rows:
+                for r in rows:
+                    exists = db.session.execute(db.text(
+                        'SELECT 1 FROM member_event WHERE child_id=:cid AND date=:d AND title=:t'
+                    ), {'cid': r[1], 'd': r[2], 't': r[3]}).fetchone()
+                    if not exists:
+                        db.session.execute(db.text(
+                            'INSERT INTO member_event (child_id, date, title, description, start_time, end_time, cancel_normal) VALUES (:cid, :d, :t, :desc, :st, :et, :cn)'
+                        ), {'cid': r[1], 'd': r[2], 't': r[3], 'desc': r[4] or '', 'st': r[5] or '', 'et': r[6] or '', 'cn': r[7] or False})
+                db.session.commit()
+        except Exception:
+            db.session.rollback()
 
 DAY_NAMES = ['월', '화', '수', '목', '금']
 DAY_NAMES_FULL = ['일', '월', '화', '수', '목', '금', '토']  # 한국 달력 (일~토)
